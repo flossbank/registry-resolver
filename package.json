@@ -1,0 +1,29 @@
+{
+  "name": "@flossbank/registry-resolver",
+  "version": "1.0.0",
+  "description": "Resolve list of packages into weighted map of dependencies",
+  "main": "index.js",
+  "scripts": {
+    "test": "ava"
+  },
+  "dependencies": {
+    "call-limit": "^1.1.1",
+    "npm-package-arg": "^8.0.1",
+    "pacote": "^11.1.11"
+  },
+  "devDependencies": {
+    "ava": "^3.11.1",
+    "sinon": "^9.0.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/flossbank/registry-resolver.git"
+  },
+  "keywords": [],
+  "author": "Peter Squicciarini <stripedpajamas273@gmail.com>",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/flossbank/registry-resolver/issues"
+  },
+  "homepage": "https://github.com/flossbank/registry-resolver#readme"
+}
