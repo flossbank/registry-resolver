@@ -190,3 +190,15 @@ test('resolveToSpec | success', async (t) => {
   })
   t.deepEqual(res, ['a@1.0.0'])
 })
+
+test('getSupportedManifestPatterns', (t) => {
+  const { resolver } = t.context
+  resolver.registries.javascript.npm.getManifestPatterns = () => ['package.json']
+
+  const supportedPatterns = resolver.getSupportedManifestPatterns()
+  t.deepEqual(supportedPatterns, [{
+    registry: 'npm',
+    language: 'javascript',
+    patterns: ['package.json']
+  }])
+})
