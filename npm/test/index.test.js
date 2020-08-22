@@ -22,6 +22,33 @@ test('getManifestPatterns', (t) => {
   t.deepEqual(t.context.npm.getManifestPatterns(), ['package.json'])
 })
 
+test('extractDependenciesFromManifest', (t) => {
+  const { npm } = t.context
+  const manifest = JSON.stringify({
+    dependencies: {
+      'js-deep-equals': '1.0.0'
+    },
+    devDependencies: {
+      'standard': '^12.1.1'
+    }
+  })
+
+  const deps = npm.extractDependenciesFromManifest({ manifest })
+
+  t.deepEqual(deps, [
+    'js-deep-equals@1.0.0',
+    'standard@^12.1.1'
+  ])
+})
+
+test('extractDependenciesFromManifest | bad manifest', (t) => {
+  const { npm } = t.context
+  const manifest = 'undefined'
+  const deps = npm.extractDependenciesFromManifest({ manifest })
+
+  t.deepEqual(deps, [])
+})
+
 test('getSpec | calls npa', (t) => {
   t.deepEqual(t.context.npm.getSpec('js-deep-equals'), npa('js-deep-equals'))
 })
