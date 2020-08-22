@@ -10,6 +10,12 @@ class NpmDependencyResolver {
     this.getManifest = limit.promise(pacote.manifest, 30)
   }
 
+  // a regex-type string list that represents the search pattern
+  // for this language/registry's manifest files
+  getManifestPatterns () {
+    return ['package.json']
+  }
+
   // parse a written package like `sodium-native` into what it means to the registry
   // e.g. sodium-native@latest
   getSpec (pkg) {

@@ -11,6 +11,21 @@ class RegistryResolver {
     }
   }
 
+  getSupportedManifestPatterns () {
+    let supportedManifestPatterns = []
+    for (const language in this.registries) {
+      for (const registry in this.registries[language]) {
+        const patterns = this.registries[language][registry].getManifestPatterns()
+        supportedManifestPatterns.push({
+          registry,
+          language,
+          patterns
+        })
+      }
+    }
+    return supportedManifestPatterns
+  }
+
   getSupportedRegistry ({ language, registry }) {
     if (!registry || !language) return false
     if (!this.registries[language]) return false

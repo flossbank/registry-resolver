@@ -18,6 +18,10 @@ test.after(() => {
   limit.promise.restore()
 })
 
+test('getManifestPatterns', (t) => {
+  t.deepEqual(t.context.npm.getManifestPatterns(), ['package.json'])
+})
+
 test('getSpec | calls npa', (t) => {
   t.deepEqual(t.context.npm.getSpec('js-deep-equals'), npa('js-deep-equals'))
 })
