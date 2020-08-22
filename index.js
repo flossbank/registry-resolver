@@ -26,6 +26,25 @@ class RegistryResolver {
     return supportedManifestPatterns
   }
 
+  extractDependenciesFromManifests (manifests) {
+    return manifests.map(({ language, registry, manifest }) => {
+      const deps = this.extractDependenciesFromManifest({ language, registry, manifest })
+      return {
+        language,
+        registry,
+        deps
+      }
+    })
+  }
+
+  extractDependenciesFromManifest ({ language, registry, manifest }) {
+    const pkgReg = this.getSupportedRegistry({ language, registry })
+    if (!pkgReg) {
+      return []
+    }
+    return pkgReg.extractDependenciesFromManifest({ manifest })
+  }
+
   getSupportedRegistry ({ language, registry }) {
     if (!registry || !language) return false
     if (!this.registries[language]) return false

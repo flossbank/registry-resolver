@@ -3,7 +3,7 @@ const npa = require('npm-package-arg')
 const limit = require('call-limit')
 
 class NpmDependencyResolver {
-  constructor ({ log = console }) {
+  constructor ({ log }) {
     this.log = log
 
     // allow 30 concurrent calls to npm registry for package manifests
@@ -14,6 +14,33 @@ class NpmDependencyResolver {
   // for this language/registry's manifest files
   getManifestPatterns () {
     return ['package.json']
+  }
+
+  extractDependenciesFromManifest({ manifest }) {
+    const parsedManifest = this.parseManifest({ manifest })
+    const deps = parsedManifest.dependencies || {}
+    const devDeps = parsedManifest.devDependencies || {}
+
+    const allDeps = []
+    for (const dep in deps) {
+      const spec = deps[dep]
+      allDeps.push(`${dep}@${spec}`)
+    }
+    for (const dep in devDeps) {
+      const spec = devDeps[dep]
+      allDeps.push(`${dep}@${spec}`)
+    }
+
+    return allDeps
+  }
+
+  parseManifest ({ manifest }) {
+    try {
+      return JSON.parse(manifest)
+    } catch (e) {
+      this.log.warn('Unable to parse manifest', e)
+      return {}
+    }
   }
 
   // parse a written package like `sodium-native` into what it means to the registry

@@ -202,3 +202,35 @@ test('getSupportedManifestPatterns', (t) => {
     patterns: ['package.json']
   }])
 })
+
+test('extractDependenciesFromManifests', (t) => {
+  const { resolver } = t.context
+  resolver.registries.javascript.npm.extractDependenciesFromManifest = sinon.stub().returns(['standard@12.0.1'])
+
+  const manifests = [
+    {
+      language: 'javascript',
+      registry: 'npm',
+      manifest: JSON.stringify({ dependencies: { 'standard': '12.0.1' } })
+    },
+    {
+      language: 'php',
+      registry: 'idk',
+      manifest: 'asdf'
+    }
+  ]
+
+  const deps = resolver.extractDependenciesFromManifests(manifests)
+  t.deepEqual(deps, [
+    {
+      language: 'javascript',
+      registry: 'npm',
+      deps: ['standard@12.0.1']
+    },
+    {
+      language: 'php',
+      registry: 'idk',
+      deps: []
+    }
+  ])
+})
