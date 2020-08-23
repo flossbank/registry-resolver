@@ -40,26 +40,23 @@ class RegistryResolver {
       }
     })
 
-    const langRegMap = new Map()
-    for (const { language, registry } of extractedDeps) {
-      const key = `${language}_${registry}`
-      if (!langRegMap.has(key)) {
-        langRegMap.set(key, { language, registry })
-      }
-    }
-    const langRegDepsMap = new Map()
+    const groups = new Map()
     for (const { language, registry, deps } of extractedDeps) {
-      const key = `${language}_${registry}`
-      const keyObj = langRegMap.get(key)
-      const otherDeps = langRegDepsMap.get(keyObj) || []
-      langRegDepsMap.set(keyObj, otherDeps.concat(deps))
+      if (!groups.has(language)) {
+        groups.set(language, new Map([[registry, deps]]))
+      } else if (!groups.get(language).has(registry)) {
+        groups.get(language).set(registry, deps)
+      } else {
+        groups.get(language).set(registry, groups.get(language).get(registry).concat(deps))
+      }
     }
 
     const depsGroupedByLangReg = []
-    for (const [{ language, registry }, deps] of langRegDepsMap.entries()) {
-      depsGroupedByLangReg.push({ language, registry, deps })
+    for (const [lang, registries] of groups.entries()) {
+      for (const [reg, deps] of registries.entries()) {
+        depsGroupedByLangReg.push({ language: lang, registry: reg, deps })
+      }
     }
-
     return depsGroupedByLangReg
   }
 
