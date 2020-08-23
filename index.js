@@ -26,8 +26,12 @@ class RegistryResolver {
     return supportedManifestPatterns
   }
 
+  //   manifests => extractedDeps
+  // [
+  //   { language, registry, manifest } => { language, registry, deps }
+  // ]
   extractDependenciesFromManifests (manifests) {
-    return manifests.map(({ language, registry, manifest }) => {
+    const extractedDeps = manifests.map(({ language, registry, manifest }) => {
       const deps = this.extractDependenciesFromManifest({ language, registry, manifest })
       return {
         language,
@@ -35,6 +39,28 @@ class RegistryResolver {
         deps
       }
     })
+
+    const langRegMap = new Map()
+    for (const { language, registry } of extractedDeps) {
+      const key = `${language}_${registry}`
+      if (!langRegMap.has(key)) {
+        langRegMap.set(key, { language, registry })
+      }
+    }
+    const langRegDepsMap = new Map()
+    for (const { language, registry, deps } of extractedDeps) {
+      const key = `${language}_${registry}`
+      const keyObj = langRegMap.get(key)
+      const otherDeps = langRegDepsMap.get(keyObj) || []
+      langRegDepsMap.set(keyObj, otherDeps.concat(deps))
+    }
+
+    const depsGroupedByLangReg = []
+    for (const [{ language, registry }, deps] of langRegDepsMap.entries()) {
+      depsGroupedByLangReg.push({ language, registry, deps })
+    }
+
+    return depsGroupedByLangReg
   }
 
   extractDependenciesFromManifest ({ language, registry, manifest }) {
@@ -44,6 +70,8 @@ class RegistryResolver {
     }
     return pkgReg.extractDependenciesFromManifest({ manifest })
   }
+
+  
 
   getSupportedRegistry ({ language, registry }) {
     if (!registry || !language) return false

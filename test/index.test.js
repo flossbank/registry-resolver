@@ -205,13 +205,20 @@ test('getSupportedManifestPatterns', (t) => {
 
 test('extractDependenciesFromManifests', (t) => {
   const { resolver } = t.context
-  resolver.registries.javascript.npm.extractDependenciesFromManifest = sinon.stub().returns(['standard@12.0.1'])
+  resolver.registries.javascript.npm.extractDependenciesFromManifest = sinon.stub()
+    .onFirstCall().returns(['standard@12.0.1'])
+    .onSecondCall().returns(['js-deep-equals@1.1.1'])
 
   const manifests = [
     {
       language: 'javascript',
       registry: 'npm',
       manifest: JSON.stringify({ dependencies: { 'standard': '12.0.1' } })
+    },
+    {
+      language: 'javascript',
+      registry: 'npm',
+      manifest: JSON.stringify({ dependencies: { 'js-deep-equals': '1.1.1' } })
     },
     {
       language: 'php',
@@ -225,7 +232,7 @@ test('extractDependenciesFromManifests', (t) => {
     {
       language: 'javascript',
       registry: 'npm',
-      deps: ['standard@12.0.1']
+      deps: ['standard@12.0.1', 'js-deep-equals@1.1.1']
     },
     {
       language: 'php',
