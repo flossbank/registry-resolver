@@ -1,4 +1,5 @@
 const NpmDependencyResolver = require('./npm')
+const PipDependencyResolver = require('./pypi')
 
 class RegistryResolver {
   constructor ({ epsilon, log }) {
@@ -67,8 +68,6 @@ class RegistryResolver {
     }
     return pkgReg.extractDependenciesFromManifest({ manifest })
   }
-
-  
 
   getSupportedRegistry ({ language, registry }) {
     if (!registry || !language) return false
@@ -149,6 +148,9 @@ class RegistryResolver {
     return packageWeightMap
   }
 
+  // Resolves definitive version for each package passed in
+  // Used in Session-Complete: resolve any unversioned top level packages to their actual version
+  // so that we can recreate the dep graph from the session data if needed
   async resolveToSpec ({ packages, language, registry }) {
     const pkgReg = this.getSupportedRegistry({ registry, language })
     if (!pkgReg) {

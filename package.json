@@ -4,10 +4,12 @@
   "description": "Resolve list of packages into weighted map of dependencies",
   "main": "index.js",
   "scripts": {
-    "test": "ava"
+    "test": "ava",
+    "coverage": "nyc ava"
   },
   "dependencies": {
     "call-limit": "^1.1.1",
+    "compare-versions": "^3.6.0",
     "npm-package-arg": "^8.0.1",
     "pacote": "^11.1.11"
   },
