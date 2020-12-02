@@ -150,7 +150,7 @@ class RubyGemsDependencyResolver {
     // Fetch all tags for a package from https://rubygems.org/api/v1/versions/[gem name].json . 
     // response will be an array of releases with a "number" key
     const options = { responseType: "json" }
-    const { body } = (await this.got(`https://rubygems.org/api/v1/versions/${name}.json`, options))
+    const { body } = await this.got(`https://rubygems.org/api/v1/versions/${name}.json`, options)
     // Grab releases and sort them greatest to least
     const releases = body.map((rel) => rel.number)
       .sort(compareVersions)
