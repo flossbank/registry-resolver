@@ -110,10 +110,10 @@ class RubyGemsDependencyResolver {
 
     // Response from rubygems will include multiple "dependencies", most commonly "development" and "runtime"
     const dependencyKeys = Object.keys(body.dependencies)
-    const depRequirements = dependencyKeys.reduce((acc, key) => {
+    const depRequirements = dependencyKeys.reduce((allDeps, key) => {
       // For each depdency group, compile a complete list of deps
       const runtime = body.dependencies[key]
-      return acc.concat(runtime.reduce((ac, dep) => {
+      return allDeps.concat(runtime.reduce((runtimeSpecificDeps, dep) => {
         // each dep is formatted like this
         /**
          * {
@@ -128,7 +128,7 @@ class RubyGemsDependencyResolver {
           operator: versionSplit[0],
           toString: () => `${dep.name}@${versionSplit[0]}${versionSplit[1]}`
         }
-        return ac.concat(spec)
+        return runtimeSpecificDeps.concat(spec)
       }, []))
     }, [])
 
