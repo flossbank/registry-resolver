@@ -1,11 +1,6 @@
 const test = require('ava')
 const sinon = require('sinon')
-const limit = require('call-limit')
 const RubyGemsDependencyResolver = require('../')
-
-test.before((t) => {
-  sinon.stub(limit, 'promise')
-})
 
 test.beforeEach((t) => {
   t.context.log = { warn: sinon.stub(), error: sinon.stub() }
@@ -13,12 +8,8 @@ test.beforeEach((t) => {
   t.context.rubygems.got = sinon.stub()
 })
 
-test.after(() => {
-  limit.promise.restore()
-})
-
 test('getManifestPatterns', (t) => {
-  t.deepEqual(t.context.rubygems.getManifestPatterns(), ['Gemfile'])
+  t.deepEqual(t.context.rubygems.getManifestPatterns(), ['^Gemfile$'])
 })
 
 test('extractDependenciesFromManifest', (t) => {

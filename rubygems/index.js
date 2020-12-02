@@ -11,7 +11,7 @@ class RubyGemsDependencyResolver {
   // a regex-type string list that represents the search pattern
   // for this language/registry's manifest files
   getManifestPatterns() {
-    return ["Gemfile"]
+    return ['^Gemfile$']
   }
 
   // Def: given a raw file (i.e. the bytes of Gemfile), return a list ([]) of
@@ -89,7 +89,7 @@ class RubyGemsDependencyResolver {
 
   // To list versions - hit https://rubygems.org/api/v1/versions/[gem name].json
   // To get deps of specific version - hit https://rubygems.org/api/v2/rubygems/[gem name]/versions/[version].json
-  // to get latest version deps - hit https://rubygems.org/api/v2/rubygems/[gem name].json
+  // to get latest version deps - hit https://rubygems.org/api/v1/gems/[gem name].json
   async getDependencies(pkgSpec) {
     let name
     let version
@@ -104,22 +104,14 @@ class RubyGemsDependencyResolver {
       return []
     }
 
-    let body
-    if (!version) {
-      ({ body } = await this.got(`https://rubygems.org/api/v2/rubygems/${name}.json`, {
-        responseType: "json"
-      }))
-    } else {
-      ({ body } = await this.got(
-        `https://rubygems.org/api/v2/rubygems/${name}/versions/${version}.json`,
-        {
-          responseType: "json"
-        }
-      ))
-    }
+    const options = { responseType: "json" }
+    const endpoint = version ? `https://rubygems.org/api/v2/rubygems/${name}/versions/${version}.json` : `https://rubygems.org/api/v1/gems/${name}.json`
+    const { body } = await this.got(endpoint, options)
 
+    // Response from rubygems will include multiple "dependencies", most commonly "development" and "runtime"
     const dependencyKeys = Object.keys(body.dependencies)
     const depRequirements = dependencyKeys.reduce((acc, key) => {
+      // For each depdency group, compile a complete list of deps
       const runtime = body.dependencies[key]
       return acc.concat(runtime.reduce((ac, dep) => {
         // each dep is formatted like this
@@ -157,11 +149,8 @@ class RubyGemsDependencyResolver {
 
     // Fetch all tags for a package from https://rubygems.org/api/v1/versions/[gem name].json . 
     // response will be an array of releases with a "number" key
-    const { body } = (await this.got(`https://rubygems.org/api/v1/versions/${name}.json`,
-      {
-        responseType: "json"
-      }
-    ))
+    const options = { responseType: "json" }
+    const { body } = (await this.got(`https://rubygems.org/api/v1/versions/${name}.json`, options))
     // Grab releases and sort them greatest to least
     const releases = body.map((rel) => rel.number)
       .sort(compareVersions)
