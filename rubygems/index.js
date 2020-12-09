@@ -1,5 +1,5 @@
 const got = require('got')
-const compareVersions = require('compare-versions')
+const { compare: compareVersions } = require('@snyk/ruby-semver')
 const limit = require('call-limit')
 
 class RubyGemsDependencyResolver {
@@ -73,7 +73,7 @@ class RubyGemsDependencyResolver {
       }
     }
 
-    const re = /^('|")(==|=|>=|>|<=|~>)?\s*([0-9.]+)('|")$/
+    const re = /^('|")(==|=|>=|>|<=|~>)?\s*([a-z0-9.]+)('|")$/
     const match = pkgParts[1].trim().match(re)
     if (!match) throw new Error(`unparseable pkg dependency ${pkgParts[1]}`)
     const operator = match[2] || '='
@@ -106,7 +106,8 @@ class RubyGemsDependencyResolver {
 
     const options = { responseType: "json" }
     const endpoint = version ? `https://rubygems.org/api/v2/rubygems/${name}/versions/${version}.json` : `https://rubygems.org/api/v1/gems/${name}.json`
-    const { body } = await this.got(endpoint, options)
+    let { body } = await this.got(endpoint, options)
+    body = JSON.parse(body)
 
     // Response from rubygems will include multiple "dependencies", most commonly "development" and "runtime"
     const dependencyKeys = Object.keys(body.dependencies)
@@ -120,13 +121,24 @@ class RubyGemsDependencyResolver {
               "name": "activerecord",
               "requirements": "= 3.0.18"
           }
+
+          OR 
+
+          {
+              "name": "activerecord",
+              "requirements": ">= 3.0.18, < 4.0"
+          }
+
+          In the second case, we want to just adhere to the second operator (< 4.0)
         */
         const versionSplit = dep.requirements.split(' ')
+        const versionSpec = versionSplit[versionSplit.length - 1]
+        const operator = versionSplit[versionSplit.length - 2]
         const spec = {
           name: dep.name,
-          version: versionSplit[1],
-          operator: versionSplit[0],
-          toString: () => `${dep.name}@${versionSplit[0]}${versionSplit[1]}`
+          versionSpec,
+          operator,
+          toString: () => `${dep.name}@${operator}${versionSpec}`
         }
         return runtimeSpecificDeps.concat(spec)
       }, []))
@@ -151,8 +163,9 @@ class RubyGemsDependencyResolver {
     // response will be an array of releases with a "number" key
     const options = { responseType: "json" }
     const { body } = await this.got(`https://rubygems.org/api/v1/versions/${name}.json`, options)
+
     // Grab releases and sort them greatest to least
-    const releases = body.map((rel) => rel.number)
+    const releases = JSON.parse(body).map((rel) => rel.number)
       .sort(compareVersions)
       .reverse()
 
@@ -168,10 +181,14 @@ class RubyGemsDependencyResolver {
     // Find the highest version out of the tags that satisfy the requirements
     switch (operator) {
       case ">=":
-      case "<=":
       case ">":
         release = releases.find(rel =>
-          compareVersions.compare(rel, version, operator)
+          compareVersions(rel, version)
+        )
+        break
+      case "<=":
+        release = releases.find(rel =>
+          compareVersions(rel, version) === 0 || compareVersions(rel, version) === -1
         )
         break
       case "~>":
@@ -186,7 +203,12 @@ class RubyGemsDependencyResolver {
           nextVersion = `${versionComponents[0]}.${parseInt(versionComponents[1])+1}.${versionComponents[2]}`
         }
         release = releases.find(rel =>
-          compareVersions.compare(rel, nextVersion, '<')
+          compareVersions(rel, nextVersion) === -1
+        )
+        break
+      case '<':
+        release = releases.find(rel =>
+          compareVersions(rel, version) === -1
         )
         break
       default:
