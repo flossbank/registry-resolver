@@ -9,6 +9,7 @@
   "dependencies": {
     "@snyk/ruby-semver": "^3.0.2",
     "call-limit": "^1.1.1",
+    "got": "^11.8.1",
     "npm-package-arg": "^8.0.1",
     "pacote": "^11.1.11"
   },
