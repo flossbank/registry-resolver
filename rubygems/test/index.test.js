@@ -55,12 +55,12 @@ test('getDependencies | returns empty dependencies of pkg from registry', async 
     verson: '1.0.0'
   })
   t.context.rubygems.got.returns({
-    body: {
+    body: JSON.stringify({
       dependencies: {
         development: [],
         runtime: []
       }
-    }
+    })
   })
   const pkg = t.context.rubygems.getSpec("gem 'rubocop'")
   const deps = await t.context.rubygems.getDependencies(pkg)
@@ -80,7 +80,7 @@ test('getDependencies | returns dependencies of pkg from registry', async (t) =>
     verson: '1.0.0'
   })
   t.context.rubygems.got.returns({
-    body: {
+    body: JSON.stringify({
       dependencies: {
         development: [],
         runtime: [
@@ -90,7 +90,7 @@ test('getDependencies | returns dependencies of pkg from registry', async (t) =>
           }
         ]
       }
-    }
+    })
   })
   const pkg = t.context.rubygems.getSpec("gem 'rubocop', '>= 3.0.0'")
   const deps = await t.context.rubygems.getDependencies(pkg)
@@ -104,7 +104,7 @@ test('getDependencies | returns "latests" dependencies of pkg from registry', as
     verson: undefined
   })
   t.context.rubygems.got.returns({
-    body: {
+    body: JSON.stringify({
       dependencies: {
         development: [
           {
@@ -114,7 +114,7 @@ test('getDependencies | returns "latests" dependencies of pkg from registry', as
         ],
         runtime: []
       }
-    }
+    })
   })
   const pkg = t.context.rubygems.getSpec("gem 'rubocop'")
   const deps = await t.context.rubygems.getDependencies(pkg)
@@ -132,11 +132,11 @@ test('resolve | return name and version if operator isn\'t there', async (t) => 
 
 test('resolve | return name and version correctly for >=', async (t) => {
   t.context.rubygems.got.resolves({
-    body: [
+    body: JSON.stringify([
       {
         number: '3.1.1'
       }
-    ]
+    ])
   })
   const pkg = t.context.rubygems.getSpec("gem 'rubocop', '>= 3.0.0'")
   const res = await t.context.rubygems.resolve(pkg)
@@ -148,7 +148,7 @@ test('resolve | return name and version correctly for >=', async (t) => {
 
 test('resolve | return name and version correctly for ~> up to next minor', async (t) => {
   t.context.rubygems.got.returns({
-    body: [
+    body: JSON.stringify([
       {
         number: '3.1.1'
       },
@@ -158,7 +158,7 @@ test('resolve | return name and version correctly for ~> up to next minor', asyn
       {
         number: '2.1.1'
       }
-    ]
+    ])
   })
   const pkg = t.context.rubygems.getSpec("gem 'rubocop', '~> 2.0.0'")
   const res = await t.context.rubygems.resolve(pkg)
@@ -170,7 +170,7 @@ test('resolve | return name and version correctly for ~> up to next minor', asyn
 
 test('resolve | return name and version correctly for ~> up to next major', async (t) => {
   t.context.rubygems.got.returns({
-    body: [
+    body: JSON.stringify([
       {
         number: '3.1.1'
       },
@@ -180,7 +180,7 @@ test('resolve | return name and version correctly for ~> up to next major', asyn
       {
         number: '2.1.0'
       }
-    ]
+    ])
   })
   const pkg = t.context.rubygems.getSpec("gem 'rubocop', '~> 2.0'")
   const res = await t.context.rubygems.resolve(pkg)
@@ -192,7 +192,7 @@ test('resolve | return name and version correctly for ~> up to next major', asyn
 
 test('resolve | throws if no satisfying version found', async (t) => {
   t.context.rubygems.got.returns({
-    body: [
+    body: JSON.stringify([
       {
         number: '3.1.1'
       },
@@ -202,7 +202,7 @@ test('resolve | throws if no satisfying version found', async (t) => {
       {
         number: '2.1.0'
       }
-    ]
+    ])
   })
   const pkg = t.context.rubygems.getSpec("gem 'rubocop', '>= 4.0.0'")
   await t.throwsAsync(async () => await t.context.rubygems.resolve(pkg))

@@ -1,5 +1,5 @@
 const got = require('got')
-const { compare: compareVersions } = require('@snyk/ruby-semver')
+const { compare: compareVersions, compare } = require('@snyk/ruby-semver')
 const limit = require('call-limit')
 
 class RubyGemsDependencyResolver {
@@ -183,7 +183,7 @@ class RubyGemsDependencyResolver {
       case ">=":
       case ">":
         release = releases.find(rel =>
-          compareVersions(rel, version)
+          compareVersions(rel, version) === 1
         )
         break
       case "<=":
