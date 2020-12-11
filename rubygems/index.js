@@ -3,7 +3,7 @@ const { compare: compareVersions } = require('@snyk/ruby-semver')
 const limit = require('call-limit')
 
 class RubyGemsDependencyResolver {
-  
+
   constructor({ log }) {
     this.log = log
     this.got = limit.promise(got, 30)
@@ -80,7 +80,10 @@ class RubyGemsDependencyResolver {
 
     // We are assuming that if this match fails, a version is not specified 
     // and there for we will set the version to "latest"
-    const re = /^('|")(==|=|>=|>|<=|~>|!=)?\s*([a-z0-9.]+)('|")$/
+
+    // Some cases, like gem "toggle", ">= 1.0", "< 2.0", "!= 3.0" are too hard to determine so will
+    // just use first found chunk i.e. >= 1.0. in this example
+    const re = /^('|")(==|=|>=|>|<=|<|~>|!=)?\s*([a-z0-9.]+)('|")$/
     const match = pkgParts[1].trim().match(re) || []
     const operator = match[2] || '='
     const version = match[3] || 'latest'
@@ -259,7 +262,7 @@ class RubyGemsDependencyResolver {
   async resolveToSpec(pkg) {
     try {
       const spec = this.getSpec(pkg)
-      const { name, version } = this.resolve(spec)
+      const { name, version } = await this.resolve(spec)
       return `${name}==${version}`
     } catch {}
     // Fall back to just returning the input
