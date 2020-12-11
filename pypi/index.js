@@ -28,12 +28,17 @@ class PipDependencyResolver {
   constructor({ log }) {
     this.log = log
     this.got = limit.promise(got, 30)
+    this.versionsCache = new Map()
+  }
+
+  init() {
+    this.versionsCache = new Map()
   }
 
   // a regex-type string list that represents the search pattern
   // for this language/registry's manifest files
   getManifestPatterns() {
-    return ["requirements.txt"]
+    return [".*requirements.*\.txt"]
   }
 
   // input: string
@@ -151,19 +156,10 @@ class PipDependencyResolver {
       return []
     }
 
-    let body
-    if (!version) {
-      ({ body } = await this.got(`https://pypi.org/pypi/${name}/json`, {
-        responseType: "json"
-      }))
-    } else {
-      ({ body } = await this.got(
-        `https://pypi.org/pypi/${name}/${version}/json`,
-        {
-          responseType: "json"
-        }
-      ))
-    }
+    const options = { responseType: "json" }
+    const endpoint = version ? `https://pypi.org/pypi/${name}/${version}/json`
+      : `https://pypi.org/pypi/${name}/json`
+    const { body } = await this.got(endpoint, options)
 
     const depRequirements = body.info.requires_dist
     if (!depRequirements || !depRequirements.length) return []
@@ -193,16 +189,18 @@ class PipDependencyResolver {
       return { name, version }
     }
 
-    // Fetch all tags for a package from https://pypi.org/pypi/<name>/json . response will have top level "releases" key
-    const { body } = (await this.got(`https://pypi.org/pypi/${name}/json`,
-      {
-        responseType: "json"
-      }
-    ))
-    // Grab releases and sort them greatest to least
-    const releases = Object.keys(body.releases)
-      .sort(compareVersions)
-      .reverse()
+    if (!this.versionsCache.has(name)) {
+      // Fetch all tags for a package from https://pypi.org/pypi/<name>/json . response will have top level "releases" key
+      const options = { responseType: "json" }
+      const { body } = (await this.got(`https://pypi.org/pypi/${name}/json`, options))
+      // Grab releases and sort them greatest to least and then staches them in our cache
+      const releasesRes = Object.keys(body.releases)
+        .sort(compareVersions)
+        .reverse()
+      this.versionsCache.set(name, releasesRes)
+    }
+    
+    const releases = this.versionsCache.get(name)
 
     if (!releases.length) throw new Error("No releases found")
 
@@ -215,6 +213,11 @@ class PipDependencyResolver {
 
     // Find the highest version out of the tags that satisfy the requirements
     switch (operator) {
+      case "!=":
+        release = releases.find(rel =>
+          compareVersions.compare(rel, version) !== 0
+        )
+        break
       case ">=":
       case "<=":
       case ">":
@@ -228,10 +231,12 @@ class PipDependencyResolver {
         // If length of the version components is 2, then means fetch up until the next major
         // if length of the version components is 3, then it means fetch up to the next minor
         let nextVersion
-        if (versionComponents.length === 2) {
-          nextVersion = `${parseInt(versionComponents[0])+1}.${versionComponents[1]}`
+        if (versionComponents.length === 1) {
+          nextVersion = `${parseInt(versionComponents[0])+1}`
+        } else if (versionComponents.length === 2) {
+          nextVersion = `${parseInt(versionComponents[0])+1}.0`
         } else {
-          nextVersion = `${versionComponents[0]}.${parseInt(versionComponents[1])+1}.${versionComponents[2]}`
+          nextVersion = `${versionComponents[0]}.${parseInt(versionComponents[1])+1}.0`
         }
         release = releases.find(rel =>
           compareVersions.compare(rel, nextVersion, '<')
@@ -256,7 +261,7 @@ class PipDependencyResolver {
   async resolveToSpec(pkg) {
     try {
       const spec = this.getSpec(pkg)
-      const { name, version } = this.resolve(spec)
+      const { name, version } = await this.resolve(spec)
       return `${name}==${version}`
     } catch {}
     // Fall back to just returning the input
