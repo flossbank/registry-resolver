@@ -5,11 +5,13 @@
   "main": "index.js",
   "scripts": {
     "test": "ava",
-    "coverage": "nyc ava"
+    "coverage": "nyc npm run test"
   },
   "dependencies": {
+    "@snyk/ruby-semver": "^3.0.2",
     "call-limit": "^1.1.1",
     "compare-versions": "^3.6.0",
+    "got": "^11.8.1",
     "npm-package-arg": "^8.0.1",
     "pacote": "^11.1.11"
   },

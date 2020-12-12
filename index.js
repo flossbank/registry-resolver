@@ -1,5 +1,6 @@
 const NpmDependencyResolver = require('./npm')
 const PipDependencyResolver = require('./pypi')
+const RubyGemsDependencyResolver = require('./rubygems')
 
 class RegistryResolver {
   constructor ({ epsilon, log }) {
@@ -8,6 +9,12 @@ class RegistryResolver {
     this.registries = {
       javascript: {
         npm: new NpmDependencyResolver({ log: this.log })
+      },
+      ruby: {
+        rubygems: new RubyGemsDependencyResolver({ log: this.log })
+      },
+      python: {
+        pypi: new PipDependencyResolver({ log: this.log })
       }
     }
   }
@@ -83,6 +90,10 @@ class RegistryResolver {
     if (!pkgReg) {
       throw new Error('unsupported registry')
     }
+    // If plugin has init function, call that 
+    if (typeof pkgReg.init === 'function') {
+      pkgReg.init()
+    }
 
     const _noCompList = typeof noCompList === 'undefined' ? new Set() : noCompList
 
@@ -123,7 +134,7 @@ class RegistryResolver {
         }
 
         let splitWeight
-        if (noCompList.has(pkgSpec.name)) {
+        if (_noCompList.has(pkgSpec.name)) {
           // if the package's development is under the umbrella of some for-profit company
           // the weight can just continue through to its dependencies
           splitWeight = weight / (deps.length || 1)

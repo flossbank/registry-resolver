@@ -200,6 +200,10 @@ test('getSupportedManifestPatterns', (t) => {
     registry: 'npm',
     language: 'javascript',
     patterns: ['package.json']
+  }, {
+    language: 'ruby',
+    patterns: ['Gemfile'],
+    registry: 'rubygems'
   }])
 })
 
