@@ -202,7 +202,7 @@ test('getSupportedManifestPatterns', (t) => {
     patterns: ['package.json']
   }, {
     language: 'ruby',
-    patterns: ['^Gemfile$'],
+    patterns: ['Gemfile'],
     registry: 'rubygems'
   }])
 })

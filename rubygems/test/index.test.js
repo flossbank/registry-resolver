@@ -9,7 +9,7 @@ test.beforeEach((t) => {
 })
 
 test('getManifestPatterns', (t) => {
-  t.deepEqual(t.context.rubygems.getManifestPatterns(), ['^Gemfile$'])
+  t.deepEqual(t.context.rubygems.getManifestPatterns(), ['Gemfile'])
 })
 
 test('init | clears cache', (t) => {

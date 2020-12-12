@@ -14,10 +14,11 @@ class RubyGemsDependencyResolver {
     this.versionsCache = new Map()
   }
 
-  // a regex-type string list that represents the search pattern
+  // a blob-type string list that represents the search pattern
   // for this language/registry's manifest files
+  // it will be matched with minimatch https://www.npmjs.com/package/minimatch
   getManifestPatterns() {
-    return ['^Gemfile$']
+    return ['Gemfile']
   }
 
   // Def: given a raw file (i.e. the bytes of Gemfile), return a list ([]) of
