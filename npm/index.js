@@ -16,6 +16,13 @@ class NpmDependencyResolver {
     return ['package.json']
   }
 
+  // returns a string in the form of a top level dependency that specifies
+  // the latest version of this package on the registry; for NPM, that's done
+  // by specifiying @latest instead of a version number
+  buildLatestSpec (pkgName) {
+    return `${pkgName}@latest`
+  }
+
   extractDependenciesFromManifest({ manifest }) {
     const parsedManifest = this.parseManifest({ manifest })
     const deps = parsedManifest.dependencies || {}

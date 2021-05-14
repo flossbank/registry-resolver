@@ -21,6 +21,13 @@ class RubyGemsDependencyResolver {
     return ['Gemfile']
   }
 
+  // returns a string in the form of a top level dependency that specifies
+  // the latest version of this package on the registry; for Ruby, not specifying
+  // a version means you want the latest
+  buildLatestSpec (pkgName) {
+    return pkgName
+  }
+
   // Def: given a raw file (i.e. the bytes of Gemfile), return a list ([]) of
   //  dependencies that are listed in the manifest file. The format of each entry in the list
   //  should be consumable (one at a time) by getSpec.
