@@ -1,4 +1,5 @@
 const NpmDependencyResolver = require('./npm')
+const PipDependencyResolver = require('./pypi')
 const RubyGemsDependencyResolver = require('./rubygems')
 
 class RegistryResolver {
@@ -11,6 +12,9 @@ class RegistryResolver {
       },
       ruby: {
         rubygems: new RubyGemsDependencyResolver({ log: this.log })
+      },
+      python: {
+        pypi: new PipDependencyResolver({ log: this.log })
       }
     }
   }
@@ -162,6 +166,9 @@ class RegistryResolver {
     return packageWeightMap
   }
 
+  // Resolves definitive version for each package passed in
+  // Used in Session-Complete: resolve any unversioned top level packages to their actual version
+  // so that we can recreate the dep graph from the session data if needed
   async resolveToSpec ({ packages, language, registry }) {
     const pkgReg = this.getSupportedRegistry({ registry, language })
     if (!pkgReg) {
