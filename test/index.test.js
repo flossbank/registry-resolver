@@ -191,6 +191,21 @@ test('resolveToSpec | success', async (t) => {
   t.deepEqual(res, ['a@1.0.0'])
 })
 
+test('buildLatestSpec', (t) => {
+  const { resolver } = t.context
+  resolver.registries.javascript.npm.buildLatestSpec = () => 'validspec'
+
+  const spec = resolver.buildLatestSpec('asdf', { language: 'javascript', registry: 'npm' })
+  t.is(spec, 'validspec')
+})
+
+test('buildLatestSpec | invalid lang reg combo', (t) => {
+  const { resolver } = t.context
+  resolver.registries.javascript.npm.buildLatestSpec = () => 'validspec'
+
+  t.throws(() => resolver.buildLatestSpec('asdf', { language: 'papascript', registry: 'npm' }))
+})
+
 test('getSupportedManifestPatterns', (t) => {
   const { resolver } = t.context
   resolver.registries.javascript.npm.getManifestPatterns = () => ['package.json']

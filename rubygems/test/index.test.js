@@ -404,3 +404,7 @@ test('resolveToSpec | throws', async (t) => {
   const spec = await t.context.rubygems.resolveToSpec("gem 'rubocop', '>= 4.0.0'")
   t.deepEqual(spec, "gem 'rubocop', '>= 4.0.0'")
 })
+
+test('buildLatestSpec', (t) => {
+  t.is(t.context.rubygems.buildLatestSpec('sodium'), 'sodium')
+})

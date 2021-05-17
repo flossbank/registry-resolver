@@ -72,6 +72,13 @@ class RegistryResolver {
     return pkgReg.extractDependenciesFromManifest({ manifest })
   }
 
+  buildLatestSpec (pkgName, { language, registry }) {
+    const pkgReg = this.getSupportedRegistry({ language, registry })
+    if (!pkgReg) throw new Error(`unsupported language/registry ${language} / ${registry}`)
+
+    return pkgReg.buildLatestSpec(pkgName)
+  }
+
   getSupportedRegistry ({ language, registry }) {
     if (!registry || !language) return false
     if (!this.registries[language]) return false

@@ -139,3 +139,7 @@ test('resolve | pacote dies', async (t) => {
   t.context.npm.getManifest.rejects()
   t.deepEqual(await t.context.npm.resolve('js-deep-equals'), {})
 })
+
+test('buildLatestSpec', (t) => {
+  t.is(t.context.npm.buildLatestSpec('sodium'), 'sodium@latest')
+})
