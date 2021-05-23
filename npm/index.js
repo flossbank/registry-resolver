@@ -23,7 +23,7 @@ class NpmDependencyResolver {
     return `${pkgName}@latest`
   }
 
-  extractDependenciesFromManifest({ manifest }) {
+  extractDependenciesFromManifest ({ manifest }) {
     const parsedManifest = this.parseManifest({ manifest })
     const deps = parsedManifest.dependencies || {}
     const devDeps = parsedManifest.devDependencies || {}

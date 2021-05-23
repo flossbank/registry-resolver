@@ -36,7 +36,7 @@ test('extractDependenciesFromManifest', (t) => {
   t.deepEqual(deps, [
     "gem 'sqlite3'",
     "gem 'puma', '~> 3.7'",
-    "gem 'sass-rails', '~> 5.0'",
+    "gem 'sass-rails', '~> 5.0'"
   ])
 })
 
@@ -100,8 +100,8 @@ test('getDependencies | returns dependencies of pkg from registry', async (t) =>
         development: [],
         runtime: [
           {
-            "name": "actionmailer",
-            "requirements": "= 3.0.18"
+            name: 'actionmailer',
+            requirements: '= 3.0.18'
           }
         ]
       }
@@ -123,8 +123,8 @@ test('getDependencies | returns "latests" dependencies of pkg from registry', as
       dependencies: {
         development: [
           {
-            "name": "actionmailer",
-            "requirements": "= 3.0.18"
+            name: 'actionmailer',
+            requirements: '= 3.0.18'
           }
         ],
         runtime: []
@@ -212,7 +212,7 @@ test('resolve | return name and version correctly for <=', async (t) => {
       },
       {
         number: '3.0.0'
-      },
+      }
     ]
   })
   const pkg = t.context.rubygems.getSpec("gem 'rubocop', '<= 3.0.0'")

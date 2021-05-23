@@ -16,7 +16,7 @@ class RegistryResolver {
   }
 
   getSupportedManifestPatterns () {
-    let supportedManifestPatterns = []
+    const supportedManifestPatterns = []
     for (const language in this.registries) {
       for (const registry in this.registries[language]) {
         const patterns = this.registries[language][registry].getManifestPatterns()
@@ -48,7 +48,7 @@ class RegistryResolver {
     for (const { language, registry, deps } of extractedDeps) {
       if (!groups.has(language)) {
         groups.set(language, new Map([[registry, deps]]))
-      } else if (!groups.get(language).has(registry)) {
+      } else if (!groups.get(language).has(registry)) { // covers multiple registries for a single language
         groups.get(language).set(registry, deps)
       } else {
         groups.get(language).set(registry, groups.get(language).get(registry).concat(deps))
@@ -87,13 +87,13 @@ class RegistryResolver {
 
   // Given a supported language+registry, this function will use the configured
   // dependency resolver(s) to create a weighted map of all the dependencies of the
-  // passed in "top level packages". 
+  // passed in "top level packages".
   async computePackageWeight ({ topLevelPackages, language, registry, noCompList }) {
     const pkgReg = this.getSupportedRegistry({ registry, language })
     if (!pkgReg) {
       throw new Error('unsupported registry')
     }
-    // If plugin has init function, call that 
+    // If plugin has init function, call that
     if (typeof pkgReg.init === 'function') {
       pkgReg.init()
     }
@@ -135,6 +135,28 @@ class RegistryResolver {
           deps = await pkgReg.getDependencies(pkgSpec)
           resolvedPackages.set(pkgId, deps)
         }
+
+        const noCompDeps = deps.filter((depPkgSpec) => _noCompList.has(depPkgSpec.name))
+
+        // any dependencies of this package that are marked as no-comp that have no dependencies themselves
+        // should not be counted in the revenue split; if they have dependencies of their own, that revenue can
+        // flow down to their children. this handles everything except the case where a no comp package depends
+        // soley no no-comp packages.
+        const noCompDepsWithNoDeps = (await Promise.all(noCompDeps.map(async (depPkgSpec) => {
+          let grandDeps
+          const depPkgId = depPkgSpec.toString()
+          if (resolvedPackages.has(depPkgId)) {
+            grandDeps = resolvedPackages.get(depPkgId)
+          } else {
+            grandDeps = await pkgReg.getDependencies(depPkgSpec)
+            resolvedPackages.set(depPkgId, grandDeps)
+          }
+
+          return { depPkgSpec, grandDeps }
+        }))).filter(({ grandDeps }) => grandDeps.length === 0).map(({ depPkgSpec }) => depPkgSpec)
+
+        // remove no comp deps that have no deps from this package's dep list
+        deps = deps.filter((dep) => !noCompDepsWithNoDeps.some(noCompDep => noCompDep.name === dep.name))
 
         let splitWeight
         if (_noCompList.has(pkgSpec.name)) {

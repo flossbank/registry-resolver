@@ -29,7 +29,7 @@ test('extractDependenciesFromManifest', (t) => {
       'js-deep-equals': '1.0.0'
     },
     devDependencies: {
-      'standard': '^12.1.1'
+      standard: '^12.1.1'
     }
   })
 
