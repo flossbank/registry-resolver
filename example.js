@@ -1,3 +1,4 @@
+/* eslint-disable */
 const RegistryResolver = require('.')
 const fs = require('fs')
 
@@ -23,21 +24,21 @@ async function resolveRubyWeightsMap () {
       manifest: data.toString()
     }])
     try {
-    const packageWeightMap = await resolver.computePackageWeight({
-      language: 'ruby',
-      registry: 'rubygems',
-      topLevelPackages: res[0].deps,
-      noCompList: undefined
-    })
+      const packageWeightMap = await resolver.computePackageWeight({
+        language: 'ruby',
+        registry: 'rubygems',
+        topLevelPackages: res[0].deps,
+        noCompList: undefined
+      })
 
-    // console.error({ packageWeightMap })
+      // console.error({ packageWeightMap })
 
-    const output = [...packageWeightMap.entries()].map(([packageName, weight]) => [
-      packageName, weight * 10000])
-    fs.writeFileSync('./output.json', JSON.stringify(output))
-  } catch (e) {
-    console.error({e })
-  }
+      const output = [...packageWeightMap.entries()].map(([packageName, weight]) => [
+        packageName, weight * 10000])
+      fs.writeFileSync('./output.json', JSON.stringify(output))
+    } catch (e) {
+      console.error({ e })
+    }
   })
 }
 

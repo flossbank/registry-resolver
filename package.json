@@ -1,18 +1,21 @@
 {
   "name": "@flossbank/registry-resolver",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Resolve list of packages into weighted map of dependencies",
   "main": "index.js",
   "scripts": {
-    "test": "ava",
-    "coverage": "nyc npm run test"
+    "test": "npm run unit-test && standard",
+    "unit-test": "ava",
+    "lint": "standard --fix",
+    "coverage": "nyc npm run unit-test"
   },
   "dependencies": {
     "@snyk/ruby-semver": "^3.0.2",
     "call-limit": "^1.1.1",
     "got": "^11.8.1",
     "npm-package-arg": "^8.0.1",
-    "pacote": "^11.1.11"
+    "pacote": "^11.1.11",
+    "standard": "^16.0.3"
   },
   "devDependencies": {
     "ava": "^3.11.1",

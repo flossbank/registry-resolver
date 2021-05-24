@@ -16,6 +16,11 @@ test.beforeEach((t) => {
   t.context.resolver = new RegistryResolver({ log })
 })
 
+test('log defaults to console', (t) => {
+  const rr = new RegistryResolver({})
+  t.deepEqual(rr.log, console)
+})
+
 test('computePackageWeight | unsupported registry', async (t) => {
   const { resolver } = t.context
   await t.throwsAsync(() => resolver.computePackageWeight({
@@ -24,6 +29,22 @@ test('computePackageWeight | unsupported registry', async (t) => {
     registry: 'mitski',
     noCompList: new Set(['react'])
   }))
+})
+
+test('computePackageWeight | calls pkg reg init if applicable', async (t) => {
+  const { resolver } = t.context
+  resolver.registries.javascript.npm.init = sinon.stub()
+  resolver.registries.javascript.npm.getSpec = npa
+  resolver.registries.javascript.npm.getDependencies = () => []
+  resolver.epsilon = 0.01
+
+  await resolver.computePackageWeight({
+    topLevelPackages: ['js-deep-equals'],
+    language: 'javascript',
+    registry: 'npm'
+  })
+
+  t.true(resolver.registries.javascript.npm.init.calledOnce)
 })
 
 test('computePackageWeight | npm | computes', async (t) => {
@@ -73,6 +94,83 @@ test('computePackageWeight | npm | computes', async (t) => {
   t.is(packageWeightMap.get('js-deep-equals'), 0.25)
   t.is(packageWeightMap.get('web-app-thing'), 0.25)
   t.is(packageWeightMap.get('murmurhash'), 0.5)
+  t.false(packageWeightMap.has('react'))
+})
+
+test('computePackageWeight | npm | handles no-comp pkgs with no deps', async (t) => {
+  // in this test, react is marked as no-comp and it has no deps:
+  // there are two top level deps; they initially get 0.5 each
+  // js-deep-equals splits its half with murmurhash, so 0.25 to jde and 0.25 to mmh
+  // web-app-thing splits its half with react and murmurhash, but react is no-comp
+  // and in this case has no deps, so it's as if web-app-thing depends only on murmur;
+  // so web-app-thing should get 0.25 and murmurhash should get another 0.25;
+  // jde: 0.25
+  // wat: 0.25
+  // mmh: 0.5
+  const { resolver } = t.context
+  resolver.registries.javascript.npm.getSpec = npa
+  resolver.registries.javascript.npm.getDependencies = (pkg) => {
+    if (pkg.name === 'js-deep-equals') {
+      return [npa('murmurhash@0.0.2')]
+    }
+    if (pkg.name === 'murmurhash') {
+      return []
+    }
+    if (pkg.name === 'web-app-thing') {
+      return [npa('react@0.0.0'), npa('murmurhash@0.0.2')]
+    }
+    if (pkg.name === 'react') {
+      return []
+    }
+  }
+  resolver.epsilon = 0.01
+
+  const packageWeightMap = await resolver.computePackageWeight({
+    topLevelPackages: ['js-deep-equals', 'web-app-thing'],
+    language: 'javascript',
+    registry: 'npm',
+    noCompList: new Set(['react'])
+  })
+
+  t.is(packageWeightMap.get('js-deep-equals'), 0.25)
+  t.is(packageWeightMap.get('web-app-thing'), 0.25)
+  t.is(packageWeightMap.get('murmurhash'), 0.5)
+  t.false(packageWeightMap.has('react'))
+})
+
+test('computePackageWeight | npm | defers to cache for no-comp deps', async (t) => {
+  const { resolver } = t.context
+  resolver.registries.javascript.npm.getSpec = npa
+
+  let reactDepCallCount = 0
+  resolver.registries.javascript.npm.getDependencies = (pkg) => {
+    if (pkg.name === 'js-deep-equals') {
+      return [npa('intermediate@1.0.1')]
+    }
+    if (pkg.name === 'intermediate') {
+      return [npa('react@0.0.0')]
+    }
+    if (pkg.name === 'web-app-thing') {
+      return [npa('react@0.0.0')]
+    }
+    if (pkg.name === 'react') {
+      reactDepCallCount++
+      return []
+    }
+  }
+  resolver.epsilon = 0.01
+
+  const packageWeightMap = await resolver.computePackageWeight({
+    topLevelPackages: ['js-deep-equals', 'web-app-thing'],
+    language: 'javascript',
+    registry: 'npm',
+    noCompList: new Set(['react'])
+  })
+  t.is(reactDepCallCount, 1)
+
+  t.is(packageWeightMap.get('js-deep-equals'), 0.25)
+  t.is(packageWeightMap.get('intermediate'), 0.25)
+  t.is(packageWeightMap.get('web-app-thing'), 0.5)
   t.false(packageWeightMap.has('react'))
 })
 
@@ -232,12 +330,17 @@ test('extractDependenciesFromManifests', (t) => {
     {
       language: 'javascript',
       registry: 'npm',
-      manifest: JSON.stringify({ dependencies: { 'standard': '12.0.1' } })
+      manifest: JSON.stringify({ dependencies: { standard: '12.0.1' } })
     },
     {
       language: 'javascript',
       registry: 'npm',
       manifest: JSON.stringify({ dependencies: { 'js-deep-equals': '1.1.1' } })
+    },
+    {
+      language: 'javascript',
+      registry: 'the-new-javascript-registry',
+      manifest: JSON.stringify({ dependencies: { 'something-irrelevant': '1.1.1' } })
     },
     {
       language: 'php',
@@ -252,6 +355,11 @@ test('extractDependenciesFromManifests', (t) => {
       language: 'javascript',
       registry: 'npm',
       deps: ['standard@12.0.1', 'js-deep-equals@1.1.1']
+    },
+    {
+      language: 'javascript',
+      registry: 'the-new-javascript-registry',
+      deps: []
     },
     {
       language: 'php',
