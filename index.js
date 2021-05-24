@@ -141,7 +141,7 @@ class RegistryResolver {
         // any dependencies of this package that are marked as no-comp that have no dependencies themselves
         // should not be counted in the revenue split; if they have dependencies of their own, that revenue can
         // flow down to their children. this handles everything except the case where a no comp package depends
-        // soley no no-comp packages.
+        // soley on no-comp packages.
         const noCompDepsWithNoDeps = (await Promise.all(noCompDeps.map(async (depPkgSpec) => {
           let grandDeps
           const depPkgId = depPkgSpec.toString()
