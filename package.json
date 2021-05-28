@@ -2,11 +2,12 @@
   "name": "@flossbank/registry-resolver",
   "version": "2.2.0",
   "description": "Resolve list of packages into weighted map of dependencies",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
-    "test": "npm run unit-test && standard",
+    "build": "tsc",
+    "test": "npm run build && npm run unit-test && ts-standard",
     "unit-test": "ava",
-    "lint": "standard --fix",
+    "lint": "ts-standard --fix",
     "coverage": "nyc npm run unit-test"
   },
   "dependencies": {
@@ -14,13 +15,27 @@
     "call-limit": "^1.1.1",
     "got": "^11.8.1",
     "npm-package-arg": "^8.0.1",
-    "pacote": "^11.1.11",
-    "standard": "^16.0.3"
+    "pacote": "^11.1.11"
   },
   "devDependencies": {
-    "ava": "^3.11.1",
+    "@ava/typescript": "2.0.0",
+    "@types/npm-package-arg": "^6.1.0",
+    "@types/pacote": "^11.1.0",
+    "@types/sinon": "^10.0.1",
+    "ava": "^3.15.0",
     "nyc": "^15.1.0",
-    "sinon": "^9.0.3"
+    "sinon": "^9.0.3",
+    "ts-sinon": "^2.0.1",
+    "ts-standard": "^10.0.0",
+    "typescript": "^4.3.2"
+  },
+  "ava": {
+    "typescript": {
+      "rewritePaths": {
+        "src/": "dist/"
+      },
+      "compile": false
+    }
   },
   "repository": {
     "type": "git",
