@@ -1,5 +1,5 @@
-const NpmDependencyResolver = require('./npm')
-const RubyGemsDependencyResolver = require('./rubygems')
+import NpmDependencyResolver from './npm/index.js'
+import RubyGemsDependencyResolver from './rubygems/index.js'
 
 class RegistryResolver {
   constructor ({ epsilon, log }) {

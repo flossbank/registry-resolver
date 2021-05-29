@@ -1,3 +1,4 @@
-test/
-**/test/
+dist/test/
+dist/**/test/
 .nyc_output
+src

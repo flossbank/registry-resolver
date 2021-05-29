@@ -1,7 +1,8 @@
-const test = require('ava')
-const sinon = require('sinon')
-const npa = require('npm-package-arg')
-const RegistryResolver = require('../')
+import test from 'ava'
+import sinon from 'sinon'
+import npa from 'npm-package-arg'
+import * as RegistryResolver from '../index.js'
+console.error(RegistryResolver)
 
 test.before(() => {
   sinon.stub(console, 'log')
