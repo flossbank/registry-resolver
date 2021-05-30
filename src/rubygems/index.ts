@@ -1,11 +1,27 @@
-const got = require('got')
-const { compare: compareVersions } = require('@snyk/ruby-semver')
-const limit = require('call-limit')
+import got from 'got'
+import { compare as compareVersions } from '@snyk/ruby-semver'
+import limit from 'call-limit'
 
-class RubyGemsDependencyResolver {
-  constructor ({ log }) {
+export interface RubyGemsDependencyResolverParams {
+  log: Logger
+  httpGet: typeof got.get
+}
+
+export type RubyGemsDependencySpec = {
+  name: string
+  operator: string
+  versionSpec: string
+  toString(): string
+}
+
+class RubyGemsDependencyResolver implements DependencyResolver<RubyGemsDependencySpec> {
+  private log: Logger
+  private got: typeof got.get
+  private versionsCache: Map<any, any>
+
+  constructor ({ log, httpGet }: RubyGemsDependencyResolverParams) {
     this.log = log
-    this.got = limit.promise(got, 30)
+    this.got = limit.promise(httpGet, 30)
     this.versionsCache = new Map()
   }
 
@@ -23,20 +39,20 @@ class RubyGemsDependencyResolver {
   // returns a string in the form of a top level dependency that specifies
   // the latest version of this package on the registry; for Ruby, not specifying
   // a version means you want the latest
-  buildLatestSpec (pkgName) {
+  buildLatestSpec (pkgName: string) {
     return pkgName
   }
 
   // Def: given a raw file (i.e. the bytes of Gemfile), return a list ([]) of
   //  dependencies that are listed in the manifest file. The format of each entry in the list
   //  should be consumable (one at a time) by getSpec.
-  extractDependenciesFromManifest ({ manifest }) {
+  extractDependenciesFromManifest ({ manifest }: PackageManifestInput) {
     // TODO: If we detect that the source of the manifest ISN"T rubygems.org, should we even parse the deps??
 
     // TODO: doesn't support `when '1.9.1'; gem 'ruby-debug-base19', '0.11.23'` syntax
 
     if (!manifest) return []
-    const extract = manifest.split('\n').reduce((acc, line) => {
+    const extract = manifest.split('\n').reduce((acc: string[], line: string) => {
       /**
        * trim off leading and trailing whitespace
        * and lowercase the requirement to avoid duplication
@@ -55,8 +71,8 @@ class RubyGemsDependencyResolver {
        */
       if (line.startsWith('gem')) {
         // Split on # and remove the comments at the end of any lines
-        const lineWithoutComment = line.split('#')[0]
-        return acc.concat(lineWithoutComment)
+        const lineWithoutComment = line.split('#').shift()
+        if (lineWithoutComment) return acc.concat(lineWithoutComment)
       }
       return acc
     }, [])
@@ -67,16 +83,14 @@ class RubyGemsDependencyResolver {
    * - input: a single entry from extractDependenciesFromManifest, input format is of
    * "gem <name of gem>, "version (optional)", specifiers (optional)
    */
-  getSpec (pkg) {
-    if (typeof pkg === 'object') return pkg
-
+  getSpec (pkg: string): RubyGemsDependencySpec {
     // Version seems to always come after the gem name, if it is specified.
-    const pkgParts = pkg.split(',')
+    const [namePart, ver] = pkg.split(',')
     // remove gem, trim off white space, remove quotes, now we have the name
-    const name = pkgParts[0].replace('gem', '').trim().replace(/'/g, '').replace(/"/g, '')
+    const name = (namePart || '').replace('gem', '').trim().replace(/'/g, '').replace(/"/g, '')
 
     // If there's nothing after the name, then return latest as version
-    if (!pkgParts[1]) {
+    if (!ver) {
       return {
         name,
         operator: '=',

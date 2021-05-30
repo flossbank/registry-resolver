@@ -7,9 +7,9 @@ export interface NpmDependencyResolverParams {
   getManifest?: typeof pacote.manifest
 }
 
-export type NpmDependencySpec = npa.Result
-
-export type NpmDependency = Dependency & {}
+export type NpmDependencySpec = npa.Result & {
+  name: string
+}
 
 export type NpmPackageManifest = {
   dependencies?: DependencySpecList 
@@ -72,13 +72,17 @@ export class NpmDependencyResolver implements DependencyResolver<NpmDependencySp
   // parse a written package like `sodium-native` into what it means to the registry
   // e.g. sodium-native@latest
   getSpec (pkg: string): NpmDependencySpec {
-    return npa(pkg)
+    const spec = npa(pkg)
+    if (!spec.name) throw new Error('unable to determine package name from input string')
+
+    // ts doesn't know that we've confirmed there's a name, so just casting it
+    return spec as NpmDependencySpec
   }
 
   // returns a list of dependency specs: [ { dep1 }, { dep2 }, ...]
   // pkg is some npa.Result
   // ref: https://github.com/DefinitelyTyped/DefinitelyTyped/blob/5344bfc80508c53a23dae37b860fb0c905ff7b24/types/npm-package-arg/index.d.ts#L25
-  async getDependencies (pkg: NpmDependencySpec): Promise<Dependency[]> {
+  async getDependencies (pkg: NpmDependencySpec | npa.Result): Promise<NpmDependencySpec[]> {
     if (!pkg.registry) {
       // this package doesn't live on the NPM registry, so we can't get the deps
       return []
@@ -90,13 +94,13 @@ export class NpmDependencyResolver implements DependencyResolver<NpmDependencySp
       const data = Object.keys(manifest?.dependencies as DependencySpecList)
         .map((name) => {
           try {
-            return npa.resolve(name, manifest?.dependencies?.[name] || '') as NpmDependency
+            return npa.resolve(name, manifest?.dependencies?.[name] || '') as NpmDependencySpec
           } catch (e) {
             this.log.warn(`unable to resolve package name ${name}`, e)
             return null
           }
         })
-        .filter((spec: NpmDependency | null): spec is NpmDependency => !!spec) // filter out any invalid packages
+        .filter((spec: NpmDependencySpec | null): spec is NpmDependencySpec => !!spec) // filter out any invalid packages
       return data
     } catch (e) {
       this.log.warn(`unable to get manifest for pkg ${pkg}`, e)
