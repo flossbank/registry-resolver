@@ -1,6 +1,14 @@
 import got from 'got'
-import { compare as compareVersions } from '@snyk/ruby-semver'
+import { compare } from '@snyk/ruby-semver'
 import limit from 'call-limit'
+
+const compareVersions = (a: string, b: string): number => {
+  const cmpRes = compare(a, b)
+  // for some reason @snyk says they might return undefined from the above compare func
+  // if that happens (it shouldn't), then we will consider the versions equal (:shrug:)
+  if (typeof cmpRes === 'undefined') return 0
+  return cmpRes
+}
 
 export interface RubyGemsDependencyResolverParams {
   log: Logger
@@ -14,12 +22,34 @@ export type RubyGemsDependencySpec = {
   toString(): string
 }
 
-class RubyGemsDependencyResolver implements DependencyResolver<RubyGemsDependencySpec> {
+type ResolvedSpec = {
+  name: string,
+  version: string
+}
+
+export type RubyGemsPackageManifestDependencySpec = {
+  name: string,
+  requirements: string
+}
+
+export type RubyGemsPackageManifest = {
+  dependencies?: {
+    [depGroup: string]: RubyGemsPackageManifestDependencySpec[]
+  }
+}
+
+type RubyGemsPackageVersion = {
+  number: string
+}
+
+type RubyGemsVersionsResponse = RubyGemsPackageVersion[]
+
+export class RubyGemsDependencyResolver implements DependencyResolver<RubyGemsDependencySpec> {
   private log: Logger
   private got: typeof got.get
-  private versionsCache: Map<any, any>
+  private versionsCache: Map<string, string[]>
 
-  constructor ({ log, httpGet }: RubyGemsDependencyResolverParams) {
+  constructor ({ log, httpGet = got.get }: RubyGemsDependencyResolverParams) {
     this.log = log
     this.got = limit.promise(httpGet, 30)
     this.versionsCache = new Map()
@@ -105,7 +135,7 @@ class RubyGemsDependencyResolver implements DependencyResolver<RubyGemsDependenc
     // Some cases, like gem "toggle", ">= 1.0", "< 2.0", "!= 3.0" are too hard to determine so will
     // just use first found chunk i.e. >= 1.0. in this example
     const re = /^('|")(==|=|>=|>|<=|<|~>|!=)?\s*([a-z0-9.]+)('|")$/
-    const match = pkgParts[1].trim().match(re) || []
+    const match = (ver || '').trim().match(re) || []
     const operator = match[2] || '='
     const version = match[3] || 'latest'
 
@@ -120,70 +150,73 @@ class RubyGemsDependencyResolver implements DependencyResolver<RubyGemsDependenc
   // To list versions - hit https://rubygems.org/api/v1/versions/[gem name].json
   // To get deps of specific version - hit https://rubygems.org/api/v2/rubygems/[gem name]/versions/[version].json
   // to get latest version deps - hit https://rubygems.org/api/v1/gems/[gem name].json
-  async getDependencies (pkgSpec) {
-    let name
-    let version
-    let dependencies
-
+  async getDependencies (pkgSpec: RubyGemsDependencySpec): Promise<RubyGemsDependencySpec[]> {
     try {
-      const resolved = await this.resolve(pkgSpec)
-      name = resolved.name
-      version = resolved.version
+      const { name, version } = await this.resolve(pkgSpec)
 
-      const options = { responseType: 'json' }
-      const endpoint = version ? `https://rubygems.org/api/v2/rubygems/${name}/versions/${version}.json` : `https://rubygems.org/api/v1/gems/${name}.json`
-      const { body } = await this.got(endpoint, options)
-      dependencies = body.dependencies
+      const endpoint = version
+        ? `https://rubygems.org/api/v2/rubygems/${name}/versions/${version}.json`
+        : `https://rubygems.org/api/v1/gems/${name}.json`
+      const { body } = await this.got(endpoint, { responseType: 'json' })
+      const { dependencies = {} } = body as RubyGemsPackageManifest
+
+      // Response from RubyGems will include multiple "dependencies", most commonly "development" and "runtime"
+      const dependencyKeys = Object.keys(dependencies) as Array<keyof typeof dependencies>
+      const depRequirements = dependencyKeys.reduce((allDeps: RubyGemsDependencySpec[], key) => {
+        // For each dependency group, compile a complete list of deps
+        const groupedDepSpecs = dependencies[key] || []
+        return allDeps.concat(groupedDepSpecs.reduce((groupedDeps: RubyGemsDependencySpec[], dep) => {
+          // each dep is formatted like this
+          /*
+           * {
+                "name": "activerecord",
+                "requirements": "= 3.0.18"
+            }
+  
+            OR
+  
+            {
+                "name": "activerecord",
+                "requirements": ">= 3.0.18, < 4.0"
+            }
+  
+            In the second case, we want to just adhere to the second operator (< 4.0)
+          */
+          const versionSplit = dep.requirements.split(' ')
+          let versionSpec = versionSplit[versionSplit.length - 1]
+          let operator = versionSplit[versionSplit.length - 2]
+          if (!versionSpec) {
+            this.log.warn(`Unable to determine version spec from ${dep.requirements} -- defaulting to latest`)
+            versionSpec = 'latest'
+          }
+          if (!operator) {
+            this.log.warn(`Unable to determine operator from ${dep.requirements} -- defaulting to '='`)
+            operator = '='
+          }
+
+          const spec = {
+            name: dep.name,
+            versionSpec,
+            operator,
+            toString: () => `${dep.name}@${operator}${versionSpec}`
+          }
+          return groupedDeps.concat(spec)
+        }, []))
+      }, [])
+
+      return depRequirements
     } catch (e) {
-      this.log.error(`${e}, ${name}, ${version}`)
+      const { name, versionSpec } = pkgSpec
+      this.log.error(`${e}, ${name}, ${versionSpec}`)
       // unable to resolve the given spec; no way to get the deps for this input
       return []
     }
 
-    // Response from rubygems will include multiple "dependencies", most commonly "development" and "runtime"
-    const dependencyKeys = Object.keys(dependencies)
-    const depRequirements = dependencyKeys.reduce((allDeps, key) => {
-      // For each depdency group, compile a complete list of deps
-      const runtime = dependencies[key]
-      return allDeps.concat(runtime.reduce((runtimeSpecificDeps, dep) => {
-        // each dep is formatted like this
-        /**
-         * {
-              "name": "activerecord",
-              "requirements": "= 3.0.18"
-          }
-
-          OR
-
-          {
-              "name": "activerecord",
-              "requirements": ">= 3.0.18, < 4.0"
-          }
-
-          In the second case, we want to just adhere to the second operator (< 4.0)
-        */
-        const versionSplit = dep.requirements.split(' ')
-        const versionSpec = versionSplit[versionSplit.length - 1]
-        const operator = versionSplit[versionSplit.length - 2]
-        const spec = {
-          name: dep.name,
-          versionSpec,
-          operator,
-          toString: () => `${dep.name}@${operator}${versionSpec}`
-        }
-        return runtimeSpecificDeps.concat(spec)
-      }, []))
-    }, [])
-
-    if (!depRequirements || !depRequirements.length) return []
-
-    return depRequirements
   }
 
-  // input: output of getSpec
   // resolves the most suitable version to freeze given <name><operator><version>
   // for example: rubocop >= 3.0.0 would fetch all versions available, and select the highest version
-  async resolve (pkgSpec) {
+  private async resolve (pkgSpec: RubyGemsDependencySpec): Promise<ResolvedSpec> {
     const { name, operator, versionSpec: version } = pkgSpec
 
     // If operator is =, return name and version UNLESS version is latest, in which case we need to resolve
@@ -195,23 +228,23 @@ class RubyGemsDependencyResolver implements DependencyResolver<RubyGemsDependenc
     if (!this.versionsCache.has(name)) {
       // Fetch all tags for a package from https://rubygems.org/api/v1/versions/[gem name].json .
       // response will be an array of releases with a "number" key
-      const options = { responseType: 'json' }
-      const { body } = await this.got(`https://rubygems.org/api/v1/versions/${name}.json`, options)
+      const { body = [] } = await this.got(`https://rubygems.org/api/v1/versions/${name}.json`, { responseType: 'json' })
 
       // Grab releases and sort them greatest to least
-      const releasesRes = body.map((rel) => rel.number)
+      const releasesRes = (body as RubyGemsVersionsResponse).map((rel) => rel.number)
         .sort(compareVersions)
         .reverse()
 
       this.versionsCache.set(name, releasesRes)
     }
-    const releases = this.versionsCache.get(name)
+    const releases = this.versionsCache.get(name) || []
 
     if (!releases.length) throw new Error('No releases found')
 
     // If version is latest, return the first element of the releases array, representing the latest release
+    // (ok to cast the array access since we've just confirmed the length of releases > 0)
     if (version === 'latest') {
-      return { name, version: releases.shift() }
+      return { name, version: releases[0] as string }
     }
 
     let release
@@ -248,18 +281,19 @@ class RubyGemsDependencyResolver implements DependencyResolver<RubyGemsDependenc
         // If length of the version components is 1, then fetch up to next major
         // If length of the version components is 2, then means fetch up until the next major
         // if length of the version components is 3, then it means fetch up to the next minor
-        let nextVersion
+        let nextVersion: string
         switch (versionComponents.length) {
           case 1: {
-            nextVersion = `${parseInt(versionComponents[0]) + 1}`
+            nextVersion = `${parseInt(versionComponents[0] as string) + 1}`
             break
           }
           case 2: {
-            nextVersion = `${parseInt(versionComponents[0]) + 1}.0`
+            nextVersion = `${parseInt(versionComponents[0] as string) + 1}.0`
             break
           }
           default: {
-            nextVersion = `${versionComponents[0]}.${parseInt(versionComponents[1]) + 1}.0`
+            if (versionComponents.length > 1)
+            nextVersion = `${versionComponents[0]}.${parseInt(versionComponents[1] as string) + 1}.0`
             break
           }
         }
@@ -292,7 +326,7 @@ class RubyGemsDependencyResolver implements DependencyResolver<RubyGemsDependenc
    *- output: a "locked" package version string -- with no ambiguity (e.g. sodium-native@1.4.0)
    * this is done by calling the registry
    */
-  async resolveToSpec (pkg) {
+  async resolveToSpec (pkg: string) {
     try {
       const spec = this.getSpec(pkg)
       const { name, version } = await this.resolve(spec)
@@ -303,4 +337,4 @@ class RubyGemsDependencyResolver implements DependencyResolver<RubyGemsDependenc
   }
 }
 
-module.exports = RubyGemsDependencyResolver
+export default RubyGemsDependencyResolver

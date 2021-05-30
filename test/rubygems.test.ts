@@ -1,23 +1,25 @@
-const test = require('ava')
-const sinon = require('sinon')
-const RubyGemsDependencyResolver = require('../')
+import anyTest, { TestInterface } from 'ava'
+import sinon, { SinonStub } from 'sinon'
+import { RubyGemsDependencyResolver } from '../src/rubygems/index.js'
+import { NoopLogger } from './_helpers.js'
+
+const test = anyTest as TestInterface<{
+  rubygems: RubyGemsDependencyResolver
+
+  httpGetStub: SinonStub
+}>
 
 test.beforeEach((t) => {
-  t.context.log = { warn: sinon.stub(), error: sinon.stub() }
-  t.context.rubygems = new RubyGemsDependencyResolver({ log: t.context.log })
-  t.context.rubygems.got = sinon.stub()
+  t.context.httpGetStub = sinon.stub()
+
+  t.context.rubygems = new RubyGemsDependencyResolver({
+    log: new NoopLogger(),
+    httpGet: t.context.httpGetStub
+  })
 })
 
 test('getManifestPatterns', (t) => {
   t.deepEqual(t.context.rubygems.getManifestPatterns(), ['Gemfile'])
-})
-
-test('init | clears cache', (t) => {
-  t.context.rubygems.versionsCache = new Map()
-  t.context.rubygems.versionsCache.set('key', 'val')
-  t.deepEqual(t.context.rubygems.versionsCache.size, 1)
-  t.context.rubygems.init()
-  t.deepEqual(t.context.rubygems.versionsCache.size, 0)
 })
 
 test('extractDependenciesFromManifest', (t) => {
@@ -53,23 +55,23 @@ test('getSpec | returns just name if name is just passed in', (t) => {
   t.deepEqual(t.context.rubygems.getSpec(pkg).toString(), 'rubocop@')
 })
 
-test('getSpec | returns obj immediately if obj passed in', (t) => {
-  const pkg = "gem 'rubocop'"
-  const specObj = t.context.rubygems.getSpec(pkg)
-  t.deepEqual(t.context.rubygems.getSpec(specObj).toString(), 'rubocop@')
-})
-
 test('getSpec | should parse out operator and version from pkg req input', (t) => {
   const pkg = "gem 'rubocop', '~> 3.7'"
   t.deepEqual(t.context.rubygems.getSpec(pkg).toString(), 'rubocop@~>3.7')
 })
 
 test('getDependencies | returns empty dependencies of pkg from registry', async (t) => {
-  t.context.rubygems.resolve = sinon.stub().resolves({
-    name: 'vscodium',
-    verson: '1.0.0'
+  const { httpGetStub } = t.context
+
+  // resolve() calls registry for list of versions bc we have not specified a version
+  httpGetStub.onCall(0).resolves({
+    body: [{
+      number: '1.0.0' // this will be `latest`
+    }]
   })
-  t.context.rubygems.got.returns({
+
+  // getDependencies() calls registry for deps of resolved version
+  httpGetStub.onCall(1).resolves({
     body: {
       dependencies: {
         development: [],
@@ -83,18 +85,28 @@ test('getDependencies | returns empty dependencies of pkg from registry', async 
 })
 
 test('getDependencies | returns empty dependencies if resolve throws', async (t) => {
-  t.context.rubygems.resolve = sinon.stub().rejects('error')
+  const { httpGetStub } = t.context
+  httpGetStub.rejects('call to registry failed')
+
   const pkg = t.context.rubygems.getSpec("gem 'rubocop'")
   const deps = await t.context.rubygems.getDependencies(pkg)
   t.deepEqual(deps, [])
 })
 
 test('getDependencies | returns dependencies of pkg from registry', async (t) => {
-  t.context.rubygems.resolve = sinon.stub().resolves({
-    name: 'vscodium',
-    version: '1.0.0'
+  const { httpGetStub } = t.context
+
+  // resolve() calls registry for list of versions bc we need to determine what is >= 3.0.0
+  httpGetStub.onCall(0).resolves({
+    body: [{
+      number: '1.0.0' // not this one
+    }, {
+      number: '4.0.0' // this one
+    }]
   })
-  t.context.rubygems.got.returns({
+
+  // getDependencies() calls registry for deps of resolved version
+  httpGetStub.onCall(1).resolves({
     body: {
       dependencies: {
         development: [],
@@ -109,84 +121,82 @@ test('getDependencies | returns dependencies of pkg from registry', async (t) =>
   })
   const pkg = t.context.rubygems.getSpec("gem 'rubocop', '>= 3.0.0'")
   const deps = await t.context.rubygems.getDependencies(pkg)
-  t.deepEqual(deps[0].toString(), 'actionmailer@=3.0.18')
+  t.deepEqual(deps.map(dep => dep.toString()), ['actionmailer@=3.0.18'])
 })
 
-test('getDependencies | returns "latests" dependencies of pkg from registry', async (t) => {
-  // When resolve returns undefined version, resolver fetches latest version from rubygems
-  t.context.rubygems.resolve = sinon.stub().resolves({
-    name: 'vscodium',
-    verson: undefined
-  })
-  t.context.rubygems.got.returns({
-    body: {
-      dependencies: {
-        development: [
-          {
-            name: 'actionmailer',
-            requirements: '= 3.0.18'
-          }
-        ],
-        runtime: []
-      }
-    }
-  })
-  const pkg = t.context.rubygems.getSpec("gem 'rubocop'")
-  const deps = await t.context.rubygems.getDependencies(pkg)
-  t.deepEqual(deps[0].toString(), 'actionmailer@=3.0.18')
-})
+test('pkg resolution | operator defaults to =', async (t) => {
+  const { httpGetStub, rubygems } = t.context
 
-test('resolve | return name and version if operator isn\'t there', async (t) => {
-  const pkg = t.context.rubygems.getSpec("gem 'rubocop', '3.1.1'")
-  const res = await t.context.rubygems.resolve(pkg)
-  t.deepEqual(res, {
-    name: 'rubocop',
-    version: '3.1.1'
-  })
-})
-
-test('resolve | use cache on second request', async (t) => {
-  t.context.rubygems.got = sinon.stub().resolves({
+  httpGetStub.onCall(0).resolves({
     body: [
-      {
-        number: '3.1.1'
-      }
+      { number: '3.1.0' },
+      { number: '3.1.1' },
+      { number: '3.1.2' },
+      { number: '3.1.3' },
     ]
   })
-  const pkg = t.context.rubygems.getSpec("gem 'rubocop', '>= 3.0.0'")
-  await t.context.rubygems.resolve(pkg)
-  t.true(t.context.rubygems.got.calledOnce)
-  t.context.rubygems.got.reset()
-  await t.context.rubygems.resolve(pkg)
-  t.true(t.context.rubygems.got.notCalled)
+
+  const resolved = await rubygems.resolveToSpec("gem 'rubocop', '3.1.1'")
+  t.is(resolved, 'rubocop==3.1.1')
 })
 
-test('resolve | no releases returned', async (t) => {
-  t.context.rubygems.got = sinon.stub().resolves({
+test('pkg resolution | use cache on second request & init clears cache', async (t) => {
+  const { httpGetStub, rubygems } = t.context
+
+  httpGetStub.onCall(0).resolves({
+    body: [
+      { number: '3.1.0' },
+      { number: '3.1.1' },
+      { number: '3.1.2' },
+      { number: '3.1.3' },
+    ]
+  })
+
+  let resolved = await rubygems.resolveToSpec("gem 'rubocop', '>= 3.0.0'")
+  t.is(resolved, 'rubocop==3.1.3')
+
+  resolved = await rubygems.resolveToSpec("gem 'rubocop', '>= 3.1.2'")
+  t.is(resolved, 'rubocop==3.1.3')
+
+  t.true(httpGetStub.calledOnce)
+
+  httpGetStub.resetHistory()
+  rubygems.init() // should clear the versions cache
+
+  // make the first call again
+  resolved = await rubygems.resolveToSpec("gem 'rubocop', '>= 3.0.0'")
+  t.is(resolved, 'rubocop==3.1.3')
+
+  // and the HTTP call should have been re-made
+  t.true(httpGetStub.calledOnce)
+})
+
+test('pkg resolution | no releases returned', async (t) => {
+  const { httpGetStub, rubygems } = t.context
+  httpGetStub.onCall(0).resolves({
     body: []
   })
-  const pkg = t.context.rubygems.getSpec("gem 'rubocop', '>= 3.0.0'")
-  await t.throwsAsync(async () => await t.context.rubygems.resolve(pkg))
+  // bc resolve() throws, resolveToSpec() will return its input
+  const resolved = await rubygems.resolveToSpec("gem 'rubocop', '>= 3.0.0'")
+  t.is(resolved, "gem 'rubocop', '>= 3.0.0'")
 })
 
-test('resolve | return name and version correctly for >=', async (t) => {
-  t.context.rubygems.got.resolves({
+test('pkg resolution | return name and version correctly for >=', async (t) => {
+  const { httpGetStub, rubygems } = t.context
+  httpGetStub.onCall(0).resolves({
     body: [
       {
         number: '3.1.1'
       }
     ]
   })
-  const pkg = t.context.rubygems.getSpec("gem 'rubocop', '>= 3.0.0'")
-  const res = await t.context.rubygems.resolve(pkg)
-  t.deepEqual(res, {
-    name: 'rubocop',
-    version: '3.1.1'
-  })
+  const resolved = await rubygems.resolveToSpec("gem 'rubocop', '>= 3.0.0'")
+  t.is(resolved, 'rubocop==3.1.1')
 })
 
-test('resolve | return name and version correctly for !=', async (t) => {
-  t.context.rubygems.got.resolves({
+test('pkg resolution | return name and version correctly for !=', async (t) => {
+  const { httpGetStub, rubygems } = t.context
+  httpGetStub.onCall(0).resolves({
     body: [
       {
         number: '3.0.0'
@@ -196,16 +206,13 @@ test('resolve | return name and version correctly for !=', async (t) => {
       }
     ]
   })
-  const pkg = t.context.rubygems.getSpec("gem 'rubocop', '!= 3.0.0'")
-  const res = await t.context.rubygems.resolve(pkg)
-  t.deepEqual(res, {
-    name: 'rubocop',
-    version: '3.1.1'
-  })
+  const resolved = await rubygems.resolveToSpec("gem 'rubocop', '!= 3.0.0'")
+  t.is(resolved, 'rubocop==3.1.1')
 })
 
-test('resolve | return name and version correctly for <=', async (t) => {
-  t.context.rubygems.got.resolves({
+test('pkg resolution | return name and version correctly for <=', async (t) => {
+  const { httpGetStub, rubygems } = t.context
+  httpGetStub.onCall(0).resolves({
     body: [
       {
         number: '3.1.1'
@@ -215,16 +222,13 @@ test('resolve | return name and version correctly for <=', async (t) => {
       }
     ]
   })
-  const pkg = t.context.rubygems.getSpec("gem 'rubocop', '<= 3.0.0'")
-  const res = await t.context.rubygems.resolve(pkg)
-  t.deepEqual(res, {
-    name: 'rubocop',
-    version: '3.0.0'
-  })
+  const resolved = await rubygems.resolveToSpec("gem 'rubocop', '<= 3.0.0'")
+  t.is(resolved, 'rubocop==3.0.0')
 })
 
 test('resolve | return name and version correctly for >', async (t) => {
-  t.context.rubygems.got.resolves({
+  const { httpGetStub, rubygems } = t.context
+  httpGetStub.onCall(0).resolves({
     body: [
       {
         number: '3.0.0'
@@ -234,32 +238,26 @@ test('resolve | return name and version correctly for >', async (t) => {
       }
     ]
   })
-  const pkg = t.context.rubygems.getSpec("gem 'rubocop', '> 3.0.0'")
-  const res = await t.context.rubygems.resolve(pkg)
-  t.deepEqual(res, {
-    name: 'rubocop',
-    version: '3.1.1'
-  })
+  const resolved = await rubygems.resolveToSpec("gem 'rubocop', '> 3.0.0'")
+  t.is(resolved, 'rubocop==3.1.1')
 })
 
-test('resolve | return name and version correctly for latest', async (t) => {
-  t.context.rubygems.got.resolves({
+test('pkg resolution | return name and version correctly for latest', async (t) => {
+  const { httpGetStub, rubygems } = t.context
+  httpGetStub.onCall(0).resolves({
     body: [
       {
         number: '3.1.1'
       }
     ]
   })
-  const pkg = t.context.rubygems.getSpec("gem 'rubocop'")
-  const res = await t.context.rubygems.resolve(pkg)
-  t.deepEqual(res, {
-    name: 'rubocop',
-    version: '3.1.1'
-  })
+  const resolved = await rubygems.resolveToSpec("gem 'rubocop'")
+  t.is(resolved, 'rubocop==3.1.1')
 })
 
 test('resolve | return name and version correctly for <', async (t) => {
-  t.context.rubygems.got.resolves({
+  const { httpGetStub, rubygems } = t.context
+  httpGetStub.onCall(0).resolves({
     body: [
       {
         number: '3.1.1'
@@ -272,30 +270,13 @@ test('resolve | return name and version correctly for <', async (t) => {
       }
     ]
   })
-  const pkg = t.context.rubygems.getSpec("gem 'rubocop', '< 3.0.0'")
-  const res = await t.context.rubygems.resolve(pkg)
-  t.deepEqual(res, {
-    name: 'rubocop',
-    version: '2.0.0'
-  })
+  const resolved = await rubygems.resolveToSpec("gem 'rubocop', '< 3.0.0'")
+  t.is(resolved, 'rubocop==2.0.0')
 })
 
-test('resolve | default case | wonky input', async (t) => {
-  t.context.rubygems.got.resolves({
-    body: [
-      {
-        number: '3.1.1'
-      }
-    ]
-  })
-  const pkg = t.context.rubygems.getSpec("gem 'rubocop', '=>>> 1.0.0'")
-  pkg.operator = '@#$'
-  pkg.versionSpec = '1.0.0'
-  await t.throwsAsync(async () => await t.context.rubygems.resolve(pkg))
-})
-
-test('resolve | return name and version correctly for ~> up to next minor', async (t) => {
-  t.context.rubygems.got.returns({
+test('pkg resolution | return name and version correctly for ~> up to next minor', async (t) => {
+  const { httpGetStub, rubygems } = t.context
+  httpGetStub.onCall(0).resolves({
     body: [
       {
         number: '3.1.1'
@@ -308,16 +289,13 @@ test('resolve | return name and version correctly for ~> up to next minor', asyn
       }
     ]
   })
-  const pkg = t.context.rubygems.getSpec("gem 'rubocop', '~> 2.0.0'")
-  const res = await t.context.rubygems.resolve(pkg)
-  t.deepEqual(res, {
-    name: 'rubocop',
-    version: '2.0.1'
-  })
+  const resolved = await rubygems.resolveToSpec("gem 'rubocop', '~> 2.0.0'")
+  t.is(resolved, 'rubocop==2.0.1')
 })
 
-test('resolve | return name and version correctly for ~> up to next major', async (t) => {
-  t.context.rubygems.got.returns({
+test('pkg resolution | return name and version correctly for ~> up to next major', async (t) => {
+  const { httpGetStub, rubygems } = t.context
+  httpGetStub.onCall(0).resolves({
     body: [
       {
         number: '3.1.1'
@@ -330,16 +308,13 @@ test('resolve | return name and version correctly for ~> up to next major', asyn
       }
     ]
   })
-  const pkg = t.context.rubygems.getSpec("gem 'rubocop', '~> 2.0'")
-  const res = await t.context.rubygems.resolve(pkg)
-  t.deepEqual(res, {
-    name: 'rubocop',
-    version: '2.9.0'
-  })
+  const resolved = await rubygems.resolveToSpec("gem 'rubocop', '~> 2.0'")
+  t.is(resolved, 'rubocop==2.9.0')
 })
 
-test('resolve | return name and version correctly for ~> up to next major with single version', async (t) => {
-  t.context.rubygems.got.returns({
+test('pkg resolution | return name and version correctly for ~> up to next major with single version', async (t) => {
+  const { httpGetStub, rubygems } = t.context
+  httpGetStub.onCall(0).resolves({
     body: [
       {
         number: '3.1.1'
@@ -352,57 +327,22 @@ test('resolve | return name and version correctly for ~> up to next major with s
       }
     ]
   })
-  const pkg = t.context.rubygems.getSpec("gem 'rubocop', '~> 2'")
-  const res = await t.context.rubygems.resolve(pkg)
-  t.deepEqual(res, {
-    name: 'rubocop',
-    version: '2.9.0'
-  })
+  const resolved = await rubygems.resolveToSpec("gem 'rubocop', '~> 2'")
+  t.is(resolved, 'rubocop==2.9.0')
 })
 
-test('resolve | throw | no version satisfying', async (t) => {
-  t.context.rubygems.got.returns({
+test('pkg resolution | no version satisfying', async (t) => {
+  const { httpGetStub, rubygems } = t.context
+  httpGetStub.onCall(0).resolves({
     body: [
       {
         number: '2.1.0'
       }
     ]
   })
-  const pkg = t.context.rubygems.getSpec("gem 'rubocop', '< 2.0'")
-  await t.throwsAsync(async () => await t.context.rubygems.resolve(pkg))
-})
-
-test('resolve | throws if no satisfying version found', async (t) => {
-  t.context.rubygems.got.returns({
-    body: [
-      {
-        number: '3.1.1'
-      },
-      {
-        number: '2.9.0'
-      },
-      {
-        number: '2.1.0'
-      }
-    ]
-  })
-  const pkg = t.context.rubygems.getSpec("gem 'rubocop', '>= 4.0.0'")
-  await t.throwsAsync(async () => await t.context.rubygems.resolve(pkg))
-})
-
-test('resolveToSpec', async (t) => {
-  t.context.rubygems.resolve = sinon.stub().resolves({
-    name: 'rubocop',
-    version: '3.1.1'
-  })
-  const spec = await t.context.rubygems.resolveToSpec("gem 'rubocop', '>= 4.0.0'")
-  t.deepEqual(spec, 'rubocop==3.1.1')
-})
-
-test('resolveToSpec | throws', async (t) => {
-  t.context.rubygems.resolve = sinon.stub().throws()
-  const spec = await t.context.rubygems.resolveToSpec("gem 'rubocop', '>= 4.0.0'")
-  t.deepEqual(spec, "gem 'rubocop', '>= 4.0.0'")
+  const input = "gem 'rubocop', '< 2.0'"
+  const resolved = await rubygems.resolveToSpec(input)
+  t.is(resolved, input)
 })
 
 test('buildLatestSpec', (t) => {

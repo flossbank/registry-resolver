@@ -114,7 +114,7 @@ class RegistryResolver {
       await Promise.all(packages.map(async (pkg) => {
         let pkgSpec
         try {
-          pkgSpec = pkgReg.getSpec(pkg)
+          pkgSpec = pkgReg.getSpec(pkg.toString())
         } catch (e) {
           // it's possible for users to send up top level packages that include invalid specs
           // when this happens, we will simply skip processing that pkg (we wouldn't be able to

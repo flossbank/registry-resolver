@@ -2,9 +2,9 @@ import anyTest, { TestInterface } from 'ava'
 import npa from 'npm-package-arg'
 import { NpmDependencyResolver } from '../src/npm/index.js'
 import sinon, { SinonStub } from 'sinon'
+import { NoopLogger } from './_helpers.js'
 
 const test = anyTest as TestInterface<{
-  log: Logger
   npm: NpmDependencyResolver
 
   getManifestStub: SinonStub
@@ -13,9 +13,9 @@ const test = anyTest as TestInterface<{
 test.beforeEach((t) => {
   t.context.getManifestStub = sinon.stub()
 
-  t.context.log = { info: () => {}, warn: () => {} }
   t.context.npm = new NpmDependencyResolver({
-    log: t.context.log, getManifest: t.context.getManifestStub
+    log: new NoopLogger(),
+    getManifest: t.context.getManifestStub
   })
 })
 

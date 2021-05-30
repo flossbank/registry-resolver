@@ -1,6 +1,7 @@
 interface Logger {
   info: <T>(...args: T) => void
   warn: <T>(...args: T) => void
+  error: <T>(...args: T) => void
 }
 
 interface DependencyResolver<Spec extends DependencySpec> {
