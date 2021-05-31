@@ -1,8 +1,15 @@
 import anyTest, { TestInterface } from 'ava'
-import npa from 'npm-package-arg'
-import { NpmDependencyResolver } from '../src/npm/index.js'
+import npaOriginal, { resolve as npaResolve } from 'npm-package-arg'
+import { NpmDependencyResolver, NpmDependencySpec } from '../src/npm/index.js'
 import sinon, { SinonStub } from 'sinon'
 import { NoopLogger } from './_helpers.js'
+
+// an `npa` that returns a Result with a name that is definitely not null
+const npa = (arg: string): NpmDependencySpec => {
+  const resolved = npaOriginal(arg)
+  if (!resolved.name) throw new Error('no name on result')
+  return resolved as NpmDependencySpec
+}
 
 const test = anyTest as TestInterface<{
   npm: NpmDependencyResolver
@@ -69,12 +76,12 @@ test('getDependencies | returns dependencies of pkg from registry', async (t) =>
   })
   const pkg = npa('js-deep-equals@2.1.1')
   const deps = await t.context.npm.getDependencies(pkg)
-  t.deepEqual(deps, [npa.resolve('murmurhash', '0.0.2') as Dependency])
+  t.deepEqual(deps, [npaResolve('murmurhash', '0.0.2') as Dependency])
 })
 
 test('getDependencies | a pkg that is not on the registry', async (t) => {
-  const pkg = npa.resolve('blah', 'git+https://github.com/stripedpajamas/blah')
-  const deps = await t.context.npm.getDependencies(pkg)
+  const pkg = npaResolve('blah', 'git+https://github.com/stripedpajamas/blah')
+  const deps = await t.context.npm.getDependencies(npa(pkg.toString()))
   t.deepEqual(deps, [])
 })
 
@@ -85,7 +92,7 @@ test('getDependencies | filters out dependencies that are invalid', async (t) =>
     dependencies: { baddy: 'ipfs://abcd', murmurhash: '0.0.2' }
   })
   const deps = await t.context.npm.getDependencies(npa('js-deep-equals'))
-  t.deepEqual(deps, [npa.resolve('murmurhash', '0.0.2') as Dependency])
+  t.deepEqual(deps, [npaResolve('murmurhash', '0.0.2') as Dependency])
 })
 
 test('getDependencies | gracefully handles bad manifest', async (t) => {

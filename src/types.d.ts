@@ -4,18 +4,19 @@ interface Logger {
   error: <T>(...args: T) => void
 }
 
-interface DependencyResolver<Spec extends DependencySpec> {
-  buildLatestSpec (p: string): string
-  extractDependenciesFromManifest (input: PackageManifestInput): string[]
-  getManifestPatterns (): string[]
-  getDependencies (spec: Spec): Promise<Spec[]>
-  getSpec (p: string): Spec
-  resolveToSpec (p: string): Promise<string>
+interface DependencyResolver {
+  init?: () => void
+  buildLatestSpec: (p: string) => string
+  extractDependenciesFromManifest: (input: PackageManifestInput) => string[]
+  getManifestPatterns: () => string[]
+  getDependencies: (spec: DependencySpec) => Promise<DependencySpec[]>
+  getSpec: (p: string) => DependencySpec
+  resolveToSpec: (p: string) => Promise<string>
 }
 
-type DependencySpec = {
+interface DependencySpec {
   name: string
-  toString(): string
+  toString: () => string
 }
 
 type DependencySpecList = Record<string, string>
@@ -29,5 +30,5 @@ interface PackageManifestInput {
 }
 
 declare module 'call-limit' {
-  export function promise<T>(fn: T, limit: number): T
+  export function promise<T> (fn: T, limit: number): T
 }

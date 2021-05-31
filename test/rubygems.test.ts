@@ -132,7 +132,7 @@ test('pkg resolution | operator defaults to =', async (t) => {
       { number: '3.1.0' },
       { number: '3.1.1' },
       { number: '3.1.2' },
-      { number: '3.1.3' },
+      { number: '3.1.3' }
     ]
   })
 
@@ -148,7 +148,7 @@ test('pkg resolution | use cache on second request & init clears cache', async (
       { number: '3.1.0' },
       { number: '3.1.1' },
       { number: '3.1.2' },
-      { number: '3.1.3' },
+      { number: '3.1.3' }
     ]
   })
 

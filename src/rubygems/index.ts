@@ -12,23 +12,21 @@ const compareVersions = (a: string, b: string): number => {
 
 export interface RubyGemsDependencyResolverParams {
   log: Logger
-  httpGet: typeof got.get
+  httpGet?: typeof got.get
 }
 
-export type RubyGemsDependencySpec = {
-  name: string
-  operator: string
-  versionSpec: string
-  toString(): string
+export type RubyGemsDependencySpec = DependencySpec & {
+  operator?: string
+  versionSpec?: string
 }
 
 type ResolvedSpec = {
-  name: string,
-  version: string
+  name: string
+  version?: string
 }
 
 export type RubyGemsPackageManifestDependencySpec = {
-  name: string,
+  name: string
   requirements: string
 }
 
@@ -44,9 +42,9 @@ type RubyGemsPackageVersion = {
 
 type RubyGemsVersionsResponse = RubyGemsPackageVersion[]
 
-export class RubyGemsDependencyResolver implements DependencyResolver<RubyGemsDependencySpec> {
-  private log: Logger
-  private got: typeof got.get
+export class RubyGemsDependencyResolver implements DependencyResolver {
+  private readonly log: Logger
+  private readonly got: typeof got.get
   private versionsCache: Map<string, string[]>
 
   constructor ({ log, httpGet = got.get }: RubyGemsDependencyResolverParams) {
@@ -172,14 +170,14 @@ export class RubyGemsDependencyResolver implements DependencyResolver<RubyGemsDe
                 "name": "activerecord",
                 "requirements": "= 3.0.18"
             }
-  
+
             OR
-  
+
             {
                 "name": "activerecord",
                 "requirements": ">= 3.0.18, < 4.0"
             }
-  
+
             In the second case, we want to just adhere to the second operator (< 4.0)
           */
           const versionSplit = dep.requirements.split(' ')
@@ -211,7 +209,6 @@ export class RubyGemsDependencyResolver implements DependencyResolver<RubyGemsDe
       // unable to resolve the given spec; no way to get the deps for this input
       return []
     }
-
   }
 
   // resolves the most suitable version to freeze given <name><operator><version>
@@ -239,12 +236,11 @@ export class RubyGemsDependencyResolver implements DependencyResolver<RubyGemsDe
     }
     const releases = this.versionsCache.get(name) || []
 
-    if (!releases.length) throw new Error('No releases found')
+    if (releases.length === 0) throw new Error('No releases found')
 
     // If version is latest, return the first element of the releases array, representing the latest release
-    // (ok to cast the array access since we've just confirmed the length of releases > 0)
-    if (version === 'latest') {
-      return { name, version: releases[0] as string }
+    if (typeof version === 'undefined' || version === 'latest') {
+      return { name, version: releases[0]! }
     }
 
     let release
@@ -284,16 +280,15 @@ export class RubyGemsDependencyResolver implements DependencyResolver<RubyGemsDe
         let nextVersion: string
         switch (versionComponents.length) {
           case 1: {
-            nextVersion = `${parseInt(versionComponents[0] as string) + 1}`
+            nextVersion = `${parseInt(versionComponents[0]!) + 1}`
             break
           }
           case 2: {
-            nextVersion = `${parseInt(versionComponents[0] as string) + 1}.0`
+            nextVersion = `${parseInt(versionComponents[0]!) + 1}.0`
             break
           }
           default: {
-            if (versionComponents.length > 1)
-            nextVersion = `${versionComponents[0]}.${parseInt(versionComponents[1] as string) + 1}.0`
+            if (versionComponents.length > 1) { nextVersion = `${versionComponents[0]}.${parseInt(versionComponents[1]!) + 1}.0` }
             break
           }
         }

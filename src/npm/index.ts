@@ -7,18 +7,19 @@ export interface NpmDependencyResolverParams {
   getManifest?: typeof pacote.manifest
 }
 
-export type NpmDependencySpec = npa.Result & {
+export type NpmDependencySpec = Partial<npa.Result> & {
   name: string
+  toString: () => string
 }
 
-export type NpmPackageManifest = {
-  dependencies?: DependencySpecList 
+export interface NpmPackageManifest {
+  dependencies?: DependencySpecList
   devDependencies?: DependencySpecList
 }
 
-export class NpmDependencyResolver implements DependencyResolver<NpmDependencySpec> {
-  private log: Logger
-  private getManifest: typeof pacote.manifest
+export class NpmDependencyResolver implements DependencyResolver {
+  private readonly log: Logger
+  private readonly getManifest: typeof pacote.manifest
 
   constructor ({ log, getManifest = pacote.manifest }: NpmDependencyResolverParams) {
     this.log = log
@@ -82,7 +83,7 @@ export class NpmDependencyResolver implements DependencyResolver<NpmDependencySp
   // returns a list of dependency specs: [ { dep1 }, { dep2 }, ...]
   // pkg is some npa.Result
   // ref: https://github.com/DefinitelyTyped/DefinitelyTyped/blob/5344bfc80508c53a23dae37b860fb0c905ff7b24/types/npm-package-arg/index.d.ts#L25
-  async getDependencies (pkg: NpmDependencySpec | npa.Result): Promise<NpmDependencySpec[]> {
+  async getDependencies (pkg: NpmDependencySpec): Promise<NpmDependencySpec[]> {
     if (!pkg.registry) {
       // this package doesn't live on the NPM registry, so we can't get the deps
       return []
@@ -120,7 +121,7 @@ export class NpmDependencyResolver implements DependencyResolver<NpmDependencySp
   }
 
   // resolve a package to its manifest on the registry
-  private async resolve (pkg: string | npa.Result): Promise<pacote.ManifestResult | null> {
+  private async resolve (pkg: string | NpmDependencySpec): Promise<pacote.ManifestResult | null> {
     try {
       const manifest = await this.getManifest(pkg.toString(), {
         fullMetadata: false // we only need deps

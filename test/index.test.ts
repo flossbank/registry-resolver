@@ -1,30 +1,28 @@
-import test from 'ava'
-import sinon from 'sinon'
-import npa from 'npm-package-arg'
-import * as RegistryResolver from '../index.js'
-console.error(RegistryResolver)
+import anyTest, { TestInterface } from 'ava'
+import { RegistryResolver } from '../src/index.js'
+import { NoopLogger, StubbedRegistryResolver } from './_helpers.js'
 
-test.before(() => {
-  sinon.stub(console, 'log')
-})
+const test = anyTest as TestInterface<{
+  resolver: RegistryResolver
 
-test.after(() => {
-  console.log.restore()
-})
+  internalResolver: StubbedRegistryResolver
+}>
 
 test.beforeEach((t) => {
-  const log = { log: sinon.stub(), warn: sinon.stub(), error: sinon.stub() }
-  t.context.resolver = new RegistryResolver({ log })
-})
-
-test('log defaults to console', (t) => {
-  const rr = new RegistryResolver({})
-  t.deepEqual(rr.log, console)
+  t.context.internalResolver = new StubbedRegistryResolver()
+  t.context.resolver = new RegistryResolver({
+    log: new NoopLogger(),
+    registryOverrides: {
+      zig: {
+        zzz: t.context.internalResolver
+      }
+    }
+  })
 })
 
 test('computePackageWeight | unsupported registry', async (t) => {
   const { resolver } = t.context
-  await t.throwsAsync(() => resolver.computePackageWeight({
+  await t.throwsAsync(async () => await resolver.computePackageWeight({
     topLevelPackages: ['js-deep-equals', 'web-app-thing'],
     language: 'scala',
     registry: 'mitski',
@@ -33,22 +31,18 @@ test('computePackageWeight | unsupported registry', async (t) => {
 })
 
 test('computePackageWeight | calls pkg reg init if applicable', async (t) => {
-  const { resolver } = t.context
-  resolver.registries.javascript.npm.init = sinon.stub()
-  resolver.registries.javascript.npm.getSpec = npa
-  resolver.registries.javascript.npm.getDependencies = () => []
-  resolver.epsilon = 0.01
-
+  const { resolver, internalResolver } = t.context
+  internalResolver.setDependencies('js-deep-equals', [])
   await resolver.computePackageWeight({
     topLevelPackages: ['js-deep-equals'],
-    language: 'javascript',
-    registry: 'npm'
+    language: 'zig',
+    registry: 'zzz'
   })
 
-  t.true(resolver.registries.javascript.npm.init.calledOnce)
+  t.true(internalResolver.getInit().calledOnce)
 })
 
-test('computePackageWeight | npm | computes', async (t) => {
+test('computePackageWeight | computes', async (t) => {
   // a fake testing graph:
   /*
       js-deep-equals  web-app-thing
@@ -67,28 +61,17 @@ test('computePackageWeight | npm | computes', async (t) => {
   //        murmurhash: 0.25 + 0.25
   //        [react not here because it is in the no-comp list]
   //     }
-  const { resolver } = t.context
-  resolver.registries.javascript.npm.getSpec = npa
-  resolver.registries.javascript.npm.getDependencies = (pkg) => {
-    if (pkg.name === 'js-deep-equals') {
-      return [npa('murmurhash@0.0.2')]
-    }
-    if (pkg.name === 'murmurhash') {
-      return []
-    }
-    if (pkg.name === 'web-app-thing') {
-      return [npa('react@0.0.0')]
-    }
-    if (pkg.name === 'react') {
-      return [npa('murmurhash@0.0.2')]
-    }
-  }
-  resolver.epsilon = 0.01
+  const { resolver, internalResolver } = t.context
+
+  internalResolver.setDependencies('js-deep-equals', ['murmurhash'])
+  internalResolver.setDependencies('murmurhash', [])
+  internalResolver.setDependencies('web-app-thing', ['react'])
+  internalResolver.setDependencies('react', ['murmurhash'])
 
   const packageWeightMap = await resolver.computePackageWeight({
     topLevelPackages: ['js-deep-equals', 'web-app-thing'],
-    language: 'javascript',
-    registry: 'npm',
+    language: 'zig',
+    registry: 'zzz',
     noCompList: new Set(['react'])
   })
 
@@ -108,28 +91,17 @@ test('computePackageWeight | npm | handles no-comp pkgs with no deps', async (t)
   // jde: 0.25
   // wat: 0.25
   // mmh: 0.5
-  const { resolver } = t.context
-  resolver.registries.javascript.npm.getSpec = npa
-  resolver.registries.javascript.npm.getDependencies = (pkg) => {
-    if (pkg.name === 'js-deep-equals') {
-      return [npa('murmurhash@0.0.2')]
-    }
-    if (pkg.name === 'murmurhash') {
-      return []
-    }
-    if (pkg.name === 'web-app-thing') {
-      return [npa('react@0.0.0'), npa('murmurhash@0.0.2')]
-    }
-    if (pkg.name === 'react') {
-      return []
-    }
-  }
-  resolver.epsilon = 0.01
+  const { resolver, internalResolver } = t.context
+
+  internalResolver.setDependencies('js-deep-equals', ['murmurhash'])
+  internalResolver.setDependencies('murmurhash', [])
+  internalResolver.setDependencies('web-app-thing', ['react', 'murmurhash'])
+  internalResolver.setDependencies('react', [])
 
   const packageWeightMap = await resolver.computePackageWeight({
     topLevelPackages: ['js-deep-equals', 'web-app-thing'],
-    language: 'javascript',
-    registry: 'npm',
+    language: 'zig',
+    registry: 'zzz',
     noCompList: new Set(['react'])
   })
 
@@ -140,34 +112,20 @@ test('computePackageWeight | npm | handles no-comp pkgs with no deps', async (t)
 })
 
 test('computePackageWeight | npm | defers to cache for no-comp deps', async (t) => {
-  const { resolver } = t.context
-  resolver.registries.javascript.npm.getSpec = npa
+  const { resolver, internalResolver } = t.context
 
-  let reactDepCallCount = 0
-  resolver.registries.javascript.npm.getDependencies = (pkg) => {
-    if (pkg.name === 'js-deep-equals') {
-      return [npa('intermediate@1.0.1')]
-    }
-    if (pkg.name === 'intermediate') {
-      return [npa('react@0.0.0')]
-    }
-    if (pkg.name === 'web-app-thing') {
-      return [npa('react@0.0.0')]
-    }
-    if (pkg.name === 'react') {
-      reactDepCallCount++
-      return []
-    }
-  }
-  resolver.epsilon = 0.01
+  internalResolver.setDependencies('js-deep-equals', ['intermediate'])
+  internalResolver.setDependencies('intermediate', ['react'])
+  internalResolver.setDependencies('web-app-thing', ['react'])
+  internalResolver.setDependencies('react', [])
 
   const packageWeightMap = await resolver.computePackageWeight({
     topLevelPackages: ['js-deep-equals', 'web-app-thing'],
-    language: 'javascript',
-    registry: 'npm',
+    language: 'zig',
+    registry: 'zzz',
     noCompList: new Set(['react'])
   })
-  t.is(reactDepCallCount, 1)
+  t.is(internalResolver.getDepCallCount.get('react'), 1)
 
   t.is(packageWeightMap.get('js-deep-equals'), 0.25)
   t.is(packageWeightMap.get('intermediate'), 0.25)
@@ -176,28 +134,19 @@ test('computePackageWeight | npm | defers to cache for no-comp deps', async (t) 
 })
 
 test('computePackageWeight | epsilon stops computation', async (t) => {
-  const { resolver } = t.context
-  resolver.registries.javascript.npm.getSpec = npa
-  resolver.registries.javascript.npm.getDependencies = (pkg) => {
-    if (pkg.name === 'js-deep-equals') {
-      return [npa('murmurhash@0.02')]
-    }
-    if (pkg.name === 'murmurhash') {
-      return []
-    }
-    if (pkg.name === 'web-app-thing') {
-      return [npa('react@0.0.0')]
-    }
-    if (pkg.name === 'react') {
-      return [npa('murmurhash@0.02')]
-    }
-  }
-  resolver.epsilon = 0.5
+  const { resolver, internalResolver } = t.context
+
+  internalResolver.setDependencies('js-deep-equals', ['murmurhash'])
+  internalResolver.setDependencies('murmurhash', [])
+  internalResolver.setDependencies('web-app-thing', ['react'])
+  internalResolver.setDependencies('react', ['murmurhash'])
+
+  resolver.setEpsilon(0.5)
 
   const packageWeightMap = await resolver.computePackageWeight({
-    topLevelPackages: ['js-deep-equals@latest', 'web-app-thing@1.0.1'],
-    language: 'javascript',
-    registry: 'npm',
+    topLevelPackages: ['js-deep-equals', 'web-app-thing'],
+    language: 'zig',
+    registry: 'zzz',
     noCompList: new Set(['react'])
   })
 
@@ -209,18 +158,14 @@ test('computePackageWeight | epsilon stops computation', async (t) => {
 })
 
 test('computePackageWeight | epsilon stops computation (no comp path)', async (t) => {
-  const { resolver } = t.context
-  resolver.registries.javascript.npm.getSpec = npa
-  resolver.registries.javascript.npm.getDependencies = (pkg) => {
-    if (pkg.name === 'react') {
-      return []
-    }
-  }
-  resolver.epsilon = 1.1 // everything is ignored
+  const { resolver, internalResolver } = t.context
+
+  internalResolver.setDependencies('react', [])
+  resolver.setEpsilon(1.1) // everything is ignored
   const packageWeightMap = await resolver.computePackageWeight({
     topLevelPackages: ['react'],
-    language: 'javascript',
-    registry: 'npm',
+    language: 'zig',
+    registry: 'zzz',
     noCompList: new Set(['react'])
   })
 
@@ -230,36 +175,28 @@ test('computePackageWeight | epsilon stops computation (no comp path)', async (t
 test('computePackageWeight | no top level packages', async (t) => {
   t.deepEqual(await t.context.resolver.computePackageWeight({
     topLevelPackages: [],
-    language: 'javascript',
-    registry: 'npm',
+    language: 'zig',
+    registry: 'zzz',
     noCompList: new Set(['react'])
   }), new Map())
 })
 
 test('computePackageWeight | invalid spec', async (t) => {
   const { resolver } = t.context
-  resolver.registries.javascript.npm.getSpec = () => { throw new Error('invalid spec') }
   t.deepEqual(await resolver.computePackageWeight({
-    topLevelPackages: ['react^15'],
-    language: 'javascript',
-    registry: 'npm',
+    topLevelPackages: ['invalid-spec'],
+    language: 'zig',
+    registry: 'zzz',
     noCompList: new Set()
   }), new Map())
 })
 
-test('getSupportedRegistry | missing param', (t) => {
-  const { resolver } = t.context
-  t.false(resolver.getSupportedRegistry({
-    language: 'haskell'
-  }))
-})
-
 test('getSupportedRegistry | invalid lang', (t) => {
   const { resolver } = t.context
-  t.false(resolver.getSupportedRegistry({
+  t.is(resolver.getSupportedRegistry({
     language: 'haskell',
     registry: 'papajohns.com'
-  }))
+  }), null)
 })
 
 test('getSupportedRegistry | invalid registry', (t) => {
@@ -267,7 +204,7 @@ test('getSupportedRegistry | invalid registry', (t) => {
   t.is(resolver.getSupportedRegistry({
     language: 'javascript',
     registry: 'papajohns.com'
-  }), undefined)
+  }), null)
 })
 
 test('resolveToSpec | invalid registry', async (t) => {
@@ -280,34 +217,31 @@ test('resolveToSpec | invalid registry', async (t) => {
 })
 
 test('resolveToSpec | success', async (t) => {
-  const { resolver } = t.context
-  resolver.registries.javascript.npm.resolveToSpec = () => 'a@1.0.0'
+  const { resolver, internalResolver } = t.context
+  internalResolver.getResolveToSpec().resolves('a-very-resolved-spec')
   const res = await resolver.resolveToSpec({
     packages: ['a'],
-    language: 'javascript',
-    registry: 'npm'
+    language: 'zig',
+    registry: 'zzz'
   })
-  t.deepEqual(res, ['a@1.0.0'])
+  t.deepEqual(res, ['a-very-resolved-spec'])
 })
 
 test('buildLatestSpec', (t) => {
   const { resolver } = t.context
-  resolver.registries.javascript.npm.buildLatestSpec = () => 'validspec'
 
-  const spec = resolver.buildLatestSpec('asdf', { language: 'javascript', registry: 'npm' })
-  t.is(spec, 'validspec')
+  const spec = resolver.buildLatestSpec('asdf', { language: 'zig', registry: 'zzz' })
+  t.is(spec, 'asdf@latest&greatest')
 })
 
 test('buildLatestSpec | invalid lang reg combo', (t) => {
   const { resolver } = t.context
-  resolver.registries.javascript.npm.buildLatestSpec = () => 'validspec'
 
   t.throws(() => resolver.buildLatestSpec('asdf', { language: 'papascript', registry: 'npm' }))
 })
 
 test('getSupportedManifestPatterns', (t) => {
   const { resolver } = t.context
-  resolver.registries.javascript.npm.getManifestPatterns = () => ['package.json']
 
   const supportedPatterns = resolver.getSupportedManifestPatterns()
   t.deepEqual(supportedPatterns, [{
@@ -318,15 +252,15 @@ test('getSupportedManifestPatterns', (t) => {
     language: 'ruby',
     patterns: ['Gemfile'],
     registry: 'rubygems'
+  }, {
+    language: 'zig',
+    patterns: [],
+    registry: 'zzz'
   }])
 })
 
 test('extractDependenciesFromManifests', (t) => {
   const { resolver } = t.context
-  resolver.registries.javascript.npm.extractDependenciesFromManifest = sinon.stub()
-    .onFirstCall().returns(['standard@12.0.1'])
-    .onSecondCall().returns(['js-deep-equals@1.1.1'])
-
   const manifests = [
     {
       language: 'javascript',
