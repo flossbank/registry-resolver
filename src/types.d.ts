@@ -11,7 +11,7 @@ interface DependencyResolver {
   getManifestPatterns: () => string[]
   getDependencies: (spec: DependencySpec) => Promise<DependencySpec[]>
   getSpec: (p: string) => DependencySpec
-  resolveToSpec: (p: string) => Promise<string>
+  resolveToSpec: (p: string) => Promise<RawPkgSpec>
 }
 
 interface DependencySpec {
@@ -24,6 +24,11 @@ type DependencySpecList = Record<string, string>
 type Dependency = {
   name: string
 }
+
+type RegistryId = string
+type LanguageId = string
+type PackageName = string
+type RawPkgSpec = string
 
 interface PackageManifestInput {
   manifest: string

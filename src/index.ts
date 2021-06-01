@@ -36,11 +36,6 @@ export type ResolveToSpecInput = {
   packages: RawPkgSpec[]
 } & PkgRegIdentifier
 
-export type RegistryId = string
-export type LanguageId = string
-export type PackageName = string
-export type RawPkgSpec = string
-
 export class RegistryResolver {
   private readonly log: Logger
 
