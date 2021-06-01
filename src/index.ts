@@ -23,6 +23,10 @@ export type SupportedManifestDependencies = {
   deps: RawPkgSpec[]
 } & PkgRegIdentifier
 
+export type SupportedManifestPattern = {
+  patterns: string[]
+} & PkgRegIdentifier
+
 export type ComputePackageWeightInput = {
   topLevelPackages: RawPkgSpec[]
   noCompList?: Set<PackageName>
@@ -38,17 +42,19 @@ export type PackageName = string
 export type RawPkgSpec = string
 
 export class RegistryResolver {
-  private log: Logger
-  private epsilon: number
-  private registries: {
+  private readonly log: Logger
+
+  private readonly registries: {
     [languageName: string]: {
       [registryName: string]: DependencyResolver
     }
   }
 
-  constructor ({ epsilon, log = console, registryOverrides = {} }: RegistryResolverParams) {
+  private epsilon: number
+
+  constructor ({ epsilon = 0.01, log = console, registryOverrides = {} }: RegistryResolverParams) {
     this.log = log
-    this.epsilon = epsilon || 0.01
+    this.epsilon = epsilon
     this.registries = {
       javascript: {
         npm: new NpmDependencyResolver({ log: this.log })
@@ -60,11 +66,11 @@ export class RegistryResolver {
     }
   }
 
-  setEpsilon (val: number) {
+  setEpsilon (val: number): void {
     this.epsilon = val
   }
 
-  getSupportedManifestPatterns () {
+  getSupportedManifestPatterns (): SupportedManifestPattern[] {
     const supportedManifestPatterns = []
     for (const language in this.registries) {
       for (const registry in this.registries[language]) {
@@ -99,11 +105,21 @@ export class RegistryResolver {
     for (const { language, registry, deps } of extractedDeps) {
       if (!groups.has(language)) {
         groups.set(language, new Map([[registry, deps]]))
-      } else if (!groups.get(language)!.has(registry)) { // covers multiple registries for a single language
-        groups.get(language)!.set(registry, deps)
-      } else {
-        groups.get(language)!.set(registry, groups.get(language)!.get(registry)!.concat(deps))
+        continue
       }
+
+      const languageGroup = groups.get(language)
+      if (typeof languageGroup === 'undefined') continue
+
+      if (!languageGroup.has(registry)) {
+        languageGroup.set(registry, deps)
+        continue
+      }
+
+      const registryGroup = languageGroup.get(registry)
+      if (typeof registryGroup === 'undefined') continue
+
+      languageGroup.set(registry, registryGroup.concat(deps))
     }
 
     const depsGroupedByLangReg: SupportedManifestDependencies[] = []
@@ -115,7 +131,7 @@ export class RegistryResolver {
     return depsGroupedByLangReg
   }
 
-  extractDependenciesFromManifest (input: SupportedManifest) {
+  extractDependenciesFromManifest (input: SupportedManifest): string[] {
     const { language, registry, manifest } = input
     const pkgReg = this.getSupportedRegistry({ language, registry })
     if (pkgReg == null) {
@@ -124,7 +140,7 @@ export class RegistryResolver {
     return pkgReg.extractDependenciesFromManifest({ manifest })
   }
 
-  buildLatestSpec (pkgName: string, pkgRegId: PkgRegIdentifier) {
+  buildLatestSpec (pkgName: string, pkgRegId: PkgRegIdentifier): RawPkgSpec {
     const { language, registry } = pkgRegId
     const pkgReg = this.getSupportedRegistry({ language, registry })
     if (pkgReg == null) throw new Error(`unsupported language/registry ${language} / ${registry}`)
@@ -132,16 +148,20 @@ export class RegistryResolver {
     return pkgReg.buildLatestSpec(pkgName)
   }
 
-  getSupportedRegistry (pkgRegId: PkgRegIdentifier) {
+  getSupportedRegistry (pkgRegId: PkgRegIdentifier): DependencyResolver | null {
     const { language, registry } = pkgRegId
-    if (!this.registries[language]) return null
-    return this.registries[language]![registry] || null
+    const langGroup = this.registries[language]
+    if (typeof langGroup === 'undefined') return null
+    const pkgReg = langGroup[registry]
+    if (typeof pkgReg === 'undefined') return null
+
+    return pkgReg
   }
 
   // Given a supported language+registry, this function will use the configured
   // dependency resolver(s) to create a weighted map of all the dependencies of the
   // passed in "top level packages".
-  async computePackageWeight (input: ComputePackageWeightInput) {
+  async computePackageWeight (input: ComputePackageWeightInput): Promise<Map<string, number>> {
     const { topLevelPackages, language, registry, noCompList = new Set() } = input
 
     const pkgReg = this.getSupportedRegistry({ registry, language })
@@ -168,9 +188,11 @@ export class RegistryResolver {
         return null
       }
     }).filter((pkg): pkg is DependencySpec => pkg !== null)
-    const queue = [{ packages: initialPackageSpecs, weight: 1 / (initialPackageSpecs.length || 1) }]
+    const initialWeight = 1 / (initialPackageSpecs.length > 0 ? initialPackageSpecs.length : 1)
+
+    const queue = [{ packages: initialPackageSpecs, weight: initialWeight }]
     while (queue.length > 0) {
-      const { packages, weight } = queue.pop() || { packages: [], weight: 0 }
+      const { packages, weight } = queue.pop() ?? { packages: [], weight: 0 }
 
       await Promise.all(packages.map(async (pkg) => {
         let pkgSpec: DependencySpec
@@ -191,7 +213,7 @@ export class RegistryResolver {
 
         let deps: DependencySpec[]
         if (resolvedPackages.has(pkgId)) {
-          deps = resolvedPackages.get(pkgId)!
+          deps = resolvedPackages.get(pkgId) ?? []
         } else {
           deps = await pkgReg.getDependencies(pkgSpec)
           resolvedPackages.set(pkgId, deps)
@@ -207,7 +229,7 @@ export class RegistryResolver {
           let grandDeps: DependencySpec[]
           const depPkgId = depPkgSpec.toString()
           if (resolvedPackages.has(depPkgId)) {
-            grandDeps = resolvedPackages.get(depPkgId)!
+            grandDeps = resolvedPackages.get(depPkgId) ?? []
           } else {
             grandDeps = await pkgReg.getDependencies(depPkgSpec)
             resolvedPackages.set(depPkgId, grandDeps)
@@ -223,7 +245,7 @@ export class RegistryResolver {
         if (noCompList.has(pkgSpec.name)) {
           // if the package's development is under the umbrella of some for-profit company
           // the weight can just continue through to its dependencies
-          splitWeight = weight / (deps.length || 1)
+          splitWeight = weight / (deps.length > 0 ? deps.length : 1)
           if (splitWeight < epsilon) {
             return
           }
@@ -231,11 +253,12 @@ export class RegistryResolver {
           // each package splits the weight with their dependencies evenly
           // deps.length == # of dependencies; +1 == self
           splitWeight = weight / (deps.length + 1)
+          const currentWeight = packageWeightMap.get(pkgSpec.name) ?? 0
           if (splitWeight < epsilon) {
-            packageWeightMap.set(pkgSpec.name, (packageWeightMap.get(pkgSpec.name) || 0) + weight)
+            packageWeightMap.set(pkgSpec.name, currentWeight + weight)
             return
           }
-          packageWeightMap.set(pkgSpec.name, (packageWeightMap.get(pkgSpec.name) || 0) + splitWeight)
+          packageWeightMap.set(pkgSpec.name, currentWeight + splitWeight)
         }
 
         queue.push({ packages: deps, weight: splitWeight })
@@ -245,13 +268,13 @@ export class RegistryResolver {
     return packageWeightMap
   }
 
-  async resolveToSpec (input: ResolveToSpecInput) {
+  async resolveToSpec (input: ResolveToSpecInput): Promise<RawPkgSpec[]> {
     const { packages, language, registry } = input
     const pkgReg = this.getSupportedRegistry({ registry, language })
     if (pkgReg == null) {
       throw new Error('unsupported registry')
     }
-    return await Promise.all(packages.map(async pkg => pkgReg.resolveToSpec(pkg)))
+    return await Promise.all(packages.map(async pkg => await pkgReg.resolveToSpec(pkg)))
   }
 }
 
