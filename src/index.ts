@@ -69,9 +69,12 @@ export class RegistryResolver {
     const supportedManifestPatterns = []
     for (const language in this.registries) {
       for (const registry in this.registries[language]) {
-        // TODO fix this
-        // @ts-expect-error
-        const patterns = this.registries[language][registry].getManifestPatterns()
+        const langGroup = this.registries[language]
+        if (typeof langGroup === 'undefined') continue
+        const pkgReg = langGroup[registry]
+        if (typeof pkgReg === 'undefined') continue
+
+        const patterns = pkgReg.getManifestPatterns()
         supportedManifestPatterns.push({
           registry,
           language,

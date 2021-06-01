@@ -1,16 +1,16 @@
-import sinon from 'sinon'
+import sinon, { SinonStub } from 'sinon'
 
 export class NoopLogger implements Logger {
-  info () {}
-  warn () {}
-  error () {}
+  info (): void {}
+  warn (): void {}
+  error (): void {}
 }
 
 export class StubbedRegistryResolver implements DependencyResolver {
   pkgDeps: Map<string, DependencySpec[]> = new Map()
   getDepCallCount: Map<string, number> = new Map()
 
-  init () {
+  init (): void {
     this._init()
   }
 
@@ -28,8 +28,8 @@ export class StubbedRegistryResolver implements DependencyResolver {
 
   async getDependencies (spec: DependencySpec): Promise<DependencySpec[]> {
     if (!this.pkgDeps.has(spec.name)) throw new Error(`unexpected call to getDependencies for ${JSON.stringify(spec)}`)
-    this.getDepCallCount.set(spec.name, (this.getDepCallCount.get(spec.name) || 0) + 1)
-    return this.pkgDeps.get(spec.name)!
+    this.getDepCallCount.set(spec.name, (this.getDepCallCount.get(spec.name) ?? 0) + 1)
+    return this.pkgDeps.get(spec.name)! // eslint-disable-line
   }
 
   getSpec (p: string): DependencySpec {
@@ -45,10 +45,10 @@ export class StubbedRegistryResolver implements DependencyResolver {
   _init = sinon.stub()
   _resolveToSpec = sinon.stub()
 
-  getInit = () => this._init
-  getResolveToSpec = () => this._resolveToSpec
+  getInit = (): SinonStub => this._init
+  getResolveToSpec = (): SinonStub => this._resolveToSpec
 
-  setDependencies = (name: string, deps: string[]) => {
+  setDependencies = (name: string, deps: string[]): void => {
     this.pkgDeps.set(name, deps.map((pkg) => this.getSpec(pkg)))
   }
 }

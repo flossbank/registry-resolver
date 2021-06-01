@@ -7,7 +7,7 @@ import { NoopLogger } from './_helpers.js'
 // an `npa` that returns a Result with a name that is definitely not null
 const npa = (arg: string): NpmDependencySpec => {
   const resolved = npaOriginal(arg)
-  if (!resolved.name) throw new Error('no name on result')
+  if (resolved.name === null) throw new Error('no name on result')
   return resolved as NpmDependencySpec
 }
 
@@ -81,7 +81,7 @@ test('getDependencies | returns dependencies of pkg from registry', async (t) =>
 
 test('getDependencies | a pkg that is not on the registry', async (t) => {
   const pkg = npaResolve('blah', 'git+https://github.com/stripedpajamas/blah')
-  const deps = await t.context.npm.getDependencies(npa(pkg.toString()))
+  const deps = await t.context.npm.getDependencies(npa(pkg.toString())) // eslint-disable-line
   t.deepEqual(deps, [])
 })
 

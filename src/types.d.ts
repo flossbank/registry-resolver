@@ -21,7 +21,7 @@ interface DependencySpec {
 
 type DependencySpecList = Record<string, string>
 
-type Dependency = {
+interface Dependency {
   name: string
 }
 

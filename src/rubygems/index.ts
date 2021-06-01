@@ -20,23 +20,23 @@ export type RubyGemsDependencySpec = DependencySpec & {
   versionSpec?: string
 }
 
-type ResolvedSpec = {
+interface ResolvedSpec {
   name: string
-  version?: string
+  version: string
 }
 
-export type RubyGemsPackageManifestDependencySpec = {
+export interface RubyGemsPackageManifestDependencySpec {
   name: string
   requirements: string
 }
 
-export type RubyGemsPackageManifest = {
+export interface RubyGemsPackageManifest {
   dependencies?: {
     [depGroup: string]: RubyGemsPackageManifestDependencySpec[]
   }
 }
 
-type RubyGemsPackageVersion = {
+interface RubyGemsPackageVersion {
   number: string
 }
 
@@ -53,33 +53,33 @@ export class RubyGemsDependencyResolver implements DependencyResolver {
     this.versionsCache = new Map()
   }
 
-  init () {
+  init (): void {
     this.versionsCache = new Map()
   }
 
   // a blob-type string list that represents the search pattern
   // for this language/registry's manifest files
   // it will be matched with minimatch https://www.npmjs.com/package/minimatch
-  getManifestPatterns () {
+  getManifestPatterns (): string[] {
     return ['Gemfile']
   }
 
   // returns a string in the form of a top level dependency that specifies
   // the latest version of this package on the registry; for Ruby, not specifying
   // a version means you want the latest
-  buildLatestSpec (pkgName: string) {
+  buildLatestSpec (pkgName: string): RawPkgSpec {
     return pkgName
   }
 
   // Def: given a raw file (i.e. the bytes of Gemfile), return a list ([]) of
   //  dependencies that are listed in the manifest file. The format of each entry in the list
   //  should be consumable (one at a time) by getSpec.
-  extractDependenciesFromManifest ({ manifest }: PackageManifestInput) {
+  extractDependenciesFromManifest ({ manifest }: PackageManifestInput): RawPkgSpec[] {
     // TODO: If we detect that the source of the manifest ISN"T rubygems.org, should we even parse the deps??
 
     // TODO: doesn't support `when '1.9.1'; gem 'ruby-debug-base19', '0.11.23'` syntax
 
-    if (!manifest) return []
+    if (manifest === '') return []
     const extract = manifest.split('\n').reduce((acc: string[], line: string) => {
       /**
        * trim off leading and trailing whitespace
@@ -100,7 +100,9 @@ export class RubyGemsDependencyResolver implements DependencyResolver {
       if (line.startsWith('gem')) {
         // Split on # and remove the comments at the end of any lines
         const lineWithoutComment = line.split('#').shift()
-        if (lineWithoutComment) return acc.concat(lineWithoutComment)
+        if (typeof lineWithoutComment !== 'undefined') {
+          return acc.concat(lineWithoutComment)
+        }
       }
       return acc
     }, [])
@@ -115,10 +117,10 @@ export class RubyGemsDependencyResolver implements DependencyResolver {
     // Version seems to always come after the gem name, if it is specified.
     const [namePart, ver] = pkg.split(',')
     // remove gem, trim off white space, remove quotes, now we have the name
-    const name = (namePart || '').replace('gem', '').trim().replace(/'/g, '').replace(/"/g, '')
+    const name = (namePart ?? '').replace('gem', '').trim().replace(/'/g, '').replace(/"/g, '')
 
     // If there's nothing after the name, then return latest as version
-    if (!ver) {
+    if (typeof ver === 'undefined' || ver === '') {
       return {
         name,
         operator: '=',
@@ -133,9 +135,9 @@ export class RubyGemsDependencyResolver implements DependencyResolver {
     // Some cases, like gem "toggle", ">= 1.0", "< 2.0", "!= 3.0" are too hard to determine so will
     // just use first found chunk i.e. >= 1.0. in this example
     const re = /^('|")(==|=|>=|>|<=|<|~>|!=)?\s*([a-z0-9.]+)('|")$/
-    const match = (ver || '').trim().match(re) || []
-    const operator = match[2] || '='
-    const version = match[3] || 'latest'
+    const match = (ver ?? '').trim().match(re)
+    const operator = match?.[2] ?? '='
+    const version = match?.[3] ?? 'latest'
 
     return {
       name,
@@ -152,9 +154,9 @@ export class RubyGemsDependencyResolver implements DependencyResolver {
     try {
       const { name, version } = await this.resolve(pkgSpec)
 
-      const endpoint = version
-        ? `https://rubygems.org/api/v2/rubygems/${name}/versions/${version}.json`
-        : `https://rubygems.org/api/v1/gems/${name}.json`
+      const endpoint = typeof version === 'undefined' || version === ''
+        ? `https://rubygems.org/api/v1/gems/${name}.json`
+        : `https://rubygems.org/api/v2/rubygems/${name}/versions/${version}.json`
       const { body } = await this.got(endpoint, { responseType: 'json' })
       const { dependencies = {} } = body as RubyGemsPackageManifest
 
@@ -162,7 +164,7 @@ export class RubyGemsDependencyResolver implements DependencyResolver {
       const dependencyKeys = Object.keys(dependencies) as Array<keyof typeof dependencies>
       const depRequirements = dependencyKeys.reduce((allDeps: RubyGemsDependencySpec[], key) => {
         // For each dependency group, compile a complete list of deps
-        const groupedDepSpecs = dependencies[key] || []
+        const groupedDepSpecs = dependencies[key] ?? []
         return allDeps.concat(groupedDepSpecs.reduce((groupedDeps: RubyGemsDependencySpec[], dep) => {
           // each dep is formatted like this
           /*
@@ -183,11 +185,11 @@ export class RubyGemsDependencyResolver implements DependencyResolver {
           const versionSplit = dep.requirements.split(' ')
           let versionSpec = versionSplit[versionSplit.length - 1]
           let operator = versionSplit[versionSplit.length - 2]
-          if (!versionSpec) {
+          if (typeof versionSpec === 'undefined' || versionSpec === '') {
             this.log.warn(`Unable to determine version spec from ${dep.requirements} -- defaulting to latest`)
             versionSpec = 'latest'
           }
-          if (!operator) {
+          if (typeof operator === 'undefined' || operator === '') {
             this.log.warn(`Unable to determine operator from ${dep.requirements} -- defaulting to '='`)
             operator = '='
           }
@@ -196,7 +198,7 @@ export class RubyGemsDependencyResolver implements DependencyResolver {
             name: dep.name,
             versionSpec,
             operator,
-            toString: () => `${dep.name}@${operator}${versionSpec}`
+            toString: () => `${dep.name}@${operator ?? '='}${versionSpec ?? 'latest'}`
           }
           return groupedDeps.concat(spec)
         }, []))
@@ -205,7 +207,7 @@ export class RubyGemsDependencyResolver implements DependencyResolver {
       return depRequirements
     } catch (e) {
       const { name, versionSpec } = pkgSpec
-      this.log.error(`${e}, ${name}, ${versionSpec}`)
+      this.log.error(e, `${name}, ${versionSpec ?? '<nullish version spec>}'}`)
       // unable to resolve the given spec; no way to get the deps for this input
       return []
     }
@@ -218,7 +220,7 @@ export class RubyGemsDependencyResolver implements DependencyResolver {
 
     // If operator is =, return name and version UNLESS version is latest, in which case we need to resolve
     // releases from ruby gems
-    if ((operator === '==' || operator === '=') && version !== 'latest') {
+    if ((operator === '==' || operator === '=') && version !== 'latest' && typeof version !== 'undefined') {
       return { name, version }
     }
 
@@ -234,13 +236,15 @@ export class RubyGemsDependencyResolver implements DependencyResolver {
 
       this.versionsCache.set(name, releasesRes)
     }
-    const releases = this.versionsCache.get(name) || []
+    const releases = this.versionsCache.get(name) ?? []
 
     if (releases.length === 0) throw new Error('No releases found')
 
     // If version is latest, return the first element of the releases array, representing the latest release
     if (typeof version === 'undefined' || version === 'latest') {
-      return { name, version: releases[0]! }
+      const latestVer = releases[0]
+      if (typeof latestVer === 'undefined') throw new Error('No suitable release found')
+      return { name, version: latestVer }
     }
 
     let release
@@ -280,15 +284,27 @@ export class RubyGemsDependencyResolver implements DependencyResolver {
         let nextVersion: string
         switch (versionComponents.length) {
           case 1: {
-            nextVersion = `${parseInt(versionComponents[0]!) + 1}`
+            const currentMajor = versionComponents[0]
+            if (typeof currentMajor !== 'undefined') {
+              nextVersion = `${parseInt(currentMajor) + 1}`
+            }
             break
           }
           case 2: {
-            nextVersion = `${parseInt(versionComponents[0]!) + 1}.0`
+            const currentMajor = versionComponents[0]
+            if (typeof currentMajor !== 'undefined') {
+              nextVersion = `${parseInt(currentMajor) + 1}.0`
+            }
             break
           }
           default: {
-            if (versionComponents.length > 1) { nextVersion = `${versionComponents[0]}.${parseInt(versionComponents[1]!) + 1}.0` }
+            const currentMajor = versionComponents[0]
+            const currentMinor = versionComponents[1]
+            if (typeof currentMajor !== 'undefined' && typeof currentMinor !== 'undefined') {
+              if (versionComponents.length > 1) {
+                nextVersion = `${currentMajor}.${parseInt(currentMinor) + 1}.0`
+              }
+            }
             break
           }
         }
@@ -305,11 +321,11 @@ export class RubyGemsDependencyResolver implements DependencyResolver {
         break
       }
       default: {
-        throw new Error(`Unable to parse version: ${operator} ${version}`)
+        throw new Error(`Unable to parse version: ${operator ?? '<undefined operator>'} ${version}`)
       }
     }
 
-    if (!release) {
+    if (typeof release === 'undefined') {
       throw new Error(`no version release that satisfies requirements: ${name} ${operator} ${version}`)
     }
 
@@ -321,7 +337,7 @@ export class RubyGemsDependencyResolver implements DependencyResolver {
    *- output: a "locked" package version string -- with no ambiguity (e.g. sodium-native@1.4.0)
    * this is done by calling the registry
    */
-  async resolveToSpec (pkg: string) {
+  async resolveToSpec (pkg: string): Promise<RawPkgSpec> {
     try {
       const spec = this.getSpec(pkg)
       const { name, version } = await this.resolve(spec)
