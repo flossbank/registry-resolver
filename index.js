@@ -107,6 +107,11 @@ class RegistryResolver {
     // this is a map of package@version => [dep@version, ...]
     const resolvedPackages = new Map()
 
+    let cacheHits = 0
+    let networkCalls = 0
+    let noCompPkgs = 0
+
+    this.log.log(`Starting package weight computation with ${topLevelPackages.length} top level packages; epsilon: ${epsilon}`)
     const queue = [{ packages: topLevelPackages, weight: 1 / (topLevelPackages.length || 1) }]
     while (queue.length) {
       const { packages, weight } = queue.pop()
@@ -131,35 +136,43 @@ class RegistryResolver {
         let deps
         if (resolvedPackages.has(pkgId)) {
           deps = resolvedPackages.get(pkgId)
+          cacheHits++
         } else {
           deps = await pkgReg.getDependencies(pkgSpec)
+          networkCalls++
+
+          const noCompDeps = deps.filter((depPkgSpec) => _noCompList.has(depPkgSpec.name))
+
+          // any dependencies of this package that are marked as no-comp that have no dependencies themselves
+          // should not be counted in the revenue split; if they have dependencies of their own, that revenue can
+          // flow down to their children. this handles everything except the case where a no comp package depends
+          // soley on no-comp packages.
+          const noCompDepsWithNoDeps = (await Promise.all(noCompDeps.map(async (depPkgSpec) => {
+            let grandDeps
+            const depPkgId = depPkgSpec.toString()
+            if (resolvedPackages.has(depPkgId)) {
+              cacheHits++
+              grandDeps = resolvedPackages.get(depPkgId)
+            } else {
+              grandDeps = await pkgReg.getDependencies(depPkgSpec)
+              resolvedPackages.set(depPkgId, grandDeps)
+              networkCalls++
+            }
+
+            return { depPkgSpec, grandDeps }
+          }))).filter(({ grandDeps }) => grandDeps.length === 0).map(({ depPkgSpec }) => depPkgSpec)
+
+          noCompPkgs += noCompDepsWithNoDeps.length
+
+          // remove no comp deps that have no deps from this package's dep list
+          deps = deps.filter((dep) => !noCompDepsWithNoDeps.some(noCompDep => noCompDep.name === dep.name))
+
           resolvedPackages.set(pkgId, deps)
         }
 
-        const noCompDeps = deps.filter((depPkgSpec) => _noCompList.has(depPkgSpec.name))
-
-        // any dependencies of this package that are marked as no-comp that have no dependencies themselves
-        // should not be counted in the revenue split; if they have dependencies of their own, that revenue can
-        // flow down to their children. this handles everything except the case where a no comp package depends
-        // soley on no-comp packages.
-        const noCompDepsWithNoDeps = (await Promise.all(noCompDeps.map(async (depPkgSpec) => {
-          let grandDeps
-          const depPkgId = depPkgSpec.toString()
-          if (resolvedPackages.has(depPkgId)) {
-            grandDeps = resolvedPackages.get(depPkgId)
-          } else {
-            grandDeps = await pkgReg.getDependencies(depPkgSpec)
-            resolvedPackages.set(depPkgId, grandDeps)
-          }
-
-          return { depPkgSpec, grandDeps }
-        }))).filter(({ grandDeps }) => grandDeps.length === 0).map(({ depPkgSpec }) => depPkgSpec)
-
-        // remove no comp deps that have no deps from this package's dep list
-        deps = deps.filter((dep) => !noCompDepsWithNoDeps.some(noCompDep => noCompDep.name === dep.name))
-
         let splitWeight
         if (_noCompList.has(pkgSpec.name)) {
+          noCompPkgs++
           // if the package's development is under the umbrella of some for-profit company
           // the weight can just continue through to its dependencies
           splitWeight = weight / (deps.length || 1)
@@ -180,6 +193,8 @@ class RegistryResolver {
         queue.push({ packages: deps, weight: splitWeight })
       }))
     }
+
+    this.log.log(`Finished package weight; cache hits: ${cacheHits}; network calls: ${networkCalls}; no comp pkgs: ${noCompPkgs}`)
 
     return packageWeightMap
   }
