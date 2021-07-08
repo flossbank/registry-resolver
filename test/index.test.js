@@ -3,22 +3,9 @@ const sinon = require('sinon')
 const npa = require('npm-package-arg')
 const RegistryResolver = require('../')
 
-test.before(() => {
-  sinon.stub(console, 'log')
-})
-
-test.after(() => {
-  console.log.restore()
-})
-
 test.beforeEach((t) => {
-  const log = { log: sinon.stub(), warn: sinon.stub(), error: sinon.stub() }
+  const log = { info: sinon.stub(), warn: sinon.stub(), error: sinon.stub() }
   t.context.resolver = new RegistryResolver({ log })
-})
-
-test('log defaults to console', (t) => {
-  const rr = new RegistryResolver({})
-  t.deepEqual(rr.log, console)
 })
 
 test('computePackageWeight | unsupported registry', async (t) => {

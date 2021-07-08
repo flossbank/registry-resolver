@@ -3,7 +3,7 @@ const RubyGemsDependencyResolver = require('./rubygems')
 
 class RegistryResolver {
   constructor ({ epsilon, log }) {
-    this.log = log || console
+    this.log = log
     this.epsilon = epsilon
     this.registries = {
       javascript: {
@@ -111,7 +111,7 @@ class RegistryResolver {
     let networkCalls = 0
     let noCompPkgs = 0
 
-    this.log.log(`Starting package weight computation with ${topLevelPackages.length} top level packages; epsilon: ${epsilon}`)
+    this.log.info(`Starting package weight computation with ${topLevelPackages.length} top level packages; epsilon: ${epsilon}`)
     const queue = [{ packages: topLevelPackages, weight: 1 / (topLevelPackages.length || 1) }]
     while (queue.length) {
       const { packages, weight } = queue.pop()
@@ -194,7 +194,7 @@ class RegistryResolver {
       }))
     }
 
-    this.log.log(`Finished package weight; cache hits: ${cacheHits}; network calls: ${networkCalls}; no comp pkgs: ${noCompPkgs}`)
+    this.log.info(`Finished package weight; cache hits: ${cacheHits}; network calls: ${networkCalls}; no comp pkgs: ${noCompPkgs}`)
 
     return packageWeightMap
   }
